@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { listTasks } from "@/lib/tasks";
-import { createTaskAction, toggleTaskAction } from "./actions";
+import { toggleTaskAction } from "./actions";
+import AddTaskForm from "./AddTaskForm";
 
 export const metadata = {
   title: "Tasks",
@@ -17,25 +18,8 @@ export default async function TasksPage() {
     <section className="space-y-6">
       <h1 className="text-3xl font-semibold">Tasks</h1>
 
-      {/* A plain HTML form whose action is a Server Action. It works even with JavaScript off. */}
-      <form action={createTaskAction} className="flex gap-2">
-        <label htmlFor="title" className="sr-only">
-          New task
-        </label>
-        <input
-          id="title"
-          name="title"
-          required
-          placeholder="What do you need to do?"
-          className="flex-1 rounded border border-black/20 px-3 py-2 dark:border-white/25 dark:bg-transparent"
-        />
-        <button
-          type="submit"
-          className="rounded bg-foreground px-4 py-2 text-background"
-        >
-          Add
-        </button>
-      </form>
+      {/* Client Component: shows validation errors and "Adding…" while saving. */}
+      <AddTaskForm />
 
       {tasks.length === 0 ? (
         <p className="text-zinc-600 dark:text-zinc-400">
