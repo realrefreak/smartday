@@ -1,0 +1,20 @@
+// The database tables, written in JavaScript.
+// drizzle-kit reads this file to generate SQL migrations, and our code imports
+// it to build type-safe queries.
+
+import { boolean, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { TITLE_MAX_LENGTH } from "../lib/task-validation.js";
+
+export const tasks = pgTable("tasks", {
+  // The database creates a random unique id for every new row.
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  // varchar(100) makes the database itself refuse longer titles: a second
+  // safety net behind validateTaskTitle.
+  title: varchar("title", { length: TITLE_MAX_LENGTH }).notNull(),
+
+  completed: boolean("completed").notNull().default(false),
+
+  // "created_at" in SQL, createdAt in JavaScript. Stored with time zone.
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
