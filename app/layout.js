@@ -36,6 +36,9 @@ export default function RootLayout({ children }) {
             <Link href="/" className="hover:underline">
               Home
             </Link>
+            <Link href="/tasks" className="hover:underline">
+              Tasks
+            </Link>
             <Link href="/about" className="hover:underline">
               About
             </Link>
