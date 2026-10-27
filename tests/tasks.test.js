@@ -17,8 +17,9 @@ describe("task store safety checks", () => {
   });
 });
 
-// These talk to a real database. They are skipped until step 3c gives them a
-// separate test database, so they can never delete your real tasks.
+// These talk to a real database: the separate TEST_DATABASE_URL one (see
+// tests/test-env.js). They are skipped when it isn't set, so they can never
+// delete your real tasks.
 describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
   beforeEach(async () => {
     await clearTasks();
