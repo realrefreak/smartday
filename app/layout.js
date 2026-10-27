@@ -1,5 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { getCurrentUser } from "@/lib/session";
+import { signOutAction } from "./(auth)/actions";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -21,7 +23,11 @@ export const metadata = {
   description: "Organize your day, one task at a time.",
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  // Reading the session cookie means every page is now rendered per request
+  // (shown as ƒ in the build), since the nav differs per visitor.
+  const user = await getCurrentUser();
+
   return (
     <html
       lang="en"
@@ -42,6 +48,31 @@ export default function RootLayout({ children }) {
             <Link href="/about" className="hover:underline">
               About
             </Link>
+
+            <div className="ml-auto flex items-center gap-4 text-sm">
+              {user ? (
+                <>
+                  <span className="text-zinc-600 dark:text-zinc-400">{user.email}</span>
+                  <form action={signOutAction}>
+                    <button type="submit" className="hover:underline">
+                      Sign out
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <Link href="/sign-in" className="hover:underline">
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/sign-up"
+                    className="rounded bg-foreground px-3 py-1 text-background"
+                  >
+                    Sign up
+                  </Link>
+                </>
+              )}
+            </div>
           </nav>
         </header>
 

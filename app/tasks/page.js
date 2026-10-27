@@ -1,4 +1,4 @@
-import { connection } from "next/server";
+import { requireUser } from "@/lib/session";
 import { listTasks } from "@/lib/tasks";
 import { toggleTaskAction } from "./actions";
 import AddTaskForm from "./AddTaskForm";
@@ -8,9 +8,10 @@ export const metadata = {
 };
 
 export default async function TasksPage() {
-  // Without this, Next would render the page once at build time (when the list
-  // is empty) and serve that forever. connection() says: render on every request.
-  await connection();
+  // The real login check: proxy.js only looks for a cookie; this confirms the
+  // session exists in the database. Logged-out visitors go to /sign-in.
+  // (Reading the session also makes this page render on every request.)
+  await requireUser();
 
   const tasks = await listTasks();
 
