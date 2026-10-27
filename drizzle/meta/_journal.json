@@ -8,6 +8,13 @@
       "when": 1793017793215,
       "tag": "0000_create_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793067417410,
+      "tag": "0001_add_auth_tables",
+      "breakpoints": true
     }
   ]
 }

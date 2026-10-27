@@ -4,7 +4,7 @@ import { addTask, clearTasks, listTasks, toggleTask } from "@/lib/tasks";
 // These checks never reach the database, so they always run.
 describe("task store safety checks", () => {
   it("returns null for an id that isn't a UUID, without querying", async () => {
-    // DATABASE_URL isn't set in tests, so a real query would throw instead.
+    // Invalid ids are rejected before any SQL is sent.
     expect(await toggleTask("does-not-exist")).toBeNull();
   });
 
@@ -18,7 +18,7 @@ describe("task store safety checks", () => {
 });
 
 // These talk to a real database: the separate TEST_DATABASE_URL one (see
-// tests/test-env.js). They are skipped when it isn't set, so they can never
+// tests/test-env.mjs). They are skipped when it isn't set, so they can never
 // delete your real tasks.
 describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
   beforeEach(async () => {
