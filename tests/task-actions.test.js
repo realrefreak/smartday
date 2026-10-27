@@ -6,9 +6,16 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
+// Replace the database-backed store with fakes too. This is a unit test of the
+// action's own logic (validate, save, refresh), not of the database.
+vi.mock("@/lib/tasks", () => ({
+  addTask: vi.fn(),
+  toggleTask: vi.fn(),
+}));
+
 import { revalidatePath } from "next/cache";
+import { addTask } from "@/lib/tasks";
 import { createTaskAction } from "@/app/tasks/actions";
-import { clearTasks, listTasks } from "@/lib/tasks";
 
 // Builds the same FormData a browser would send.
 function form(title) {
@@ -20,8 +27,7 @@ function form(title) {
 const initialState = { error: "", title: "" };
 
 describe("createTaskAction", () => {
-  beforeEach(async () => {
-    await clearTasks();
+  beforeEach(() => {
     vi.clearAllMocks();
   });
 
@@ -29,7 +35,7 @@ describe("createTaskAction", () => {
     const state = await createTaskAction(initialState, form("  Buy milk  "));
 
     expect(state).toEqual({ error: "", title: "" });
-    expect((await listTasks()).map((t) => t.title)).toEqual(["Buy milk"]);
+    expect(addTask).toHaveBeenCalledWith("Buy milk");
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 
@@ -37,7 +43,7 @@ describe("createTaskAction", () => {
     const state = await createTaskAction(initialState, form("   "));
 
     expect(state.error).toBe("Please enter a task title.");
-    expect(await listTasks()).toEqual([]);
+    expect(addTask).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
@@ -47,6 +53,6 @@ describe("createTaskAction", () => {
 
     expect(state.error).toMatch(/100 characters/);
     expect(state.title).toBe(longTitle);
-    expect(await listTasks()).toEqual([]);
+    expect(addTask).not.toHaveBeenCalled();
   });
 });

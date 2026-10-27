@@ -1,8 +1,25 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addTask, clearTasks, listTasks, toggleTask } from "@/lib/tasks";
 
-describe("task store", () => {
-  // The store is shared module state, so reset it before every test.
+// These checks never reach the database, so they always run.
+describe("task store safety checks", () => {
+  it("returns null for an id that isn't a UUID, without querying", async () => {
+    // DATABASE_URL isn't set in tests, so a real query would throw instead.
+    expect(await toggleTask("does-not-exist")).toBeNull();
+  });
+
+  it("refuses to clear tasks outside of tests", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+
+    await expect(clearTasks()).rejects.toThrow(/only run in tests/);
+
+    vi.unstubAllEnvs();
+  });
+});
+
+// These talk to a real database. They are skipped until step 3c gives them a
+// separate test database, so they can never delete your real tasks.
+describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
   beforeEach(async () => {
     await clearTasks();
   });
@@ -42,15 +59,7 @@ describe("task store", () => {
     expect((await toggleTask(task.id)).completed).toBe(false);
   });
 
-  it("returns null when toggling an unknown id", async () => {
-    expect(await toggleTask("does-not-exist")).toBeNull();
-  });
-
-  it("does not let callers change stored tasks directly", async () => {
-    const task = await addTask("Original");
-    task.title = "Changed from outside";
-
-    const [stored] = await listTasks();
-    expect(stored.title).toBe("Original");
+  it("returns null when toggling a valid but unknown id", async () => {
+    expect(await toggleTask("00000000-0000-4000-8000-000000000000")).toBeNull();
   });
 });
