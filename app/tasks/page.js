@@ -11,9 +11,10 @@ export default async function TasksPage() {
   // The real login check: proxy.js only looks for a cookie; this confirms the
   // session exists in the database. Logged-out visitors go to /sign-in.
   // (Reading the session also makes this page render on every request.)
-  await requireUser();
+  const user = await requireUser();
 
-  const tasks = await listTasks();
+  // Only this user's tasks.
+  const tasks = await listTasks(user.id);
 
   return (
     <section className="space-y-6">

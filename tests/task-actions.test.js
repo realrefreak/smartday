@@ -54,7 +54,8 @@ describe("createTaskAction", () => {
     const state = await createTaskAction(initialState, form("  Buy milk  "));
 
     expect(state).toEqual({ error: "", title: "" });
-    expect(addTask).toHaveBeenCalledWith("Buy milk");
+    // The owner comes from the session, not the form.
+    expect(addTask).toHaveBeenCalledWith("user-1", "Buy milk");
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 
@@ -90,5 +91,16 @@ describe("toggleTaskAction", () => {
 
     expect(toggleTask).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("toggles on behalf of the signed-in user only", async () => {
+    getCurrentUser.mockResolvedValue(signedInUser);
+    const data = new FormData();
+    data.set("id", "00000000-0000-4000-8000-000000000000");
+
+    await toggleTaskAction(data);
+
+    expect(toggleTask).toHaveBeenCalledWith("user-1", "00000000-0000-4000-8000-000000000000");
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 });

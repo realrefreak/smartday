@@ -19,9 +19,13 @@ const SIGNED_OUT_ERROR = "Your session has ended. Please sign in again.";
 export async function createTaskAction(prevState, formData) {
   const rawTitle = formData.get("title");
 
-  if (!(await getCurrentUser())) {
+  // The owner always comes from the session on the server, never from the form,
+  // so nobody can create tasks for another user.
+  const user = await getCurrentUser();
+  if (!user) {
     return { error: SIGNED_OUT_ERROR, title: typeof rawTitle === "string" ? rawTitle : "" };
   }
+
   const result = validateTaskTitle(rawTitle);
 
   if (!result.ok) {
@@ -31,7 +35,7 @@ export async function createTaskAction(prevState, formData) {
     };
   }
 
-  await addTask(result.title);
+  await addTask(user.id, result.title);
 
   // Tell Next the /tasks page is out of date, so the response shows the new task.
   revalidatePath("/tasks");
@@ -40,12 +44,15 @@ export async function createTaskAction(prevState, formData) {
 }
 
 export async function toggleTaskAction(formData) {
-  if (!(await getCurrentUser())) {
+  const user = await getCurrentUser();
+  if (!user) {
     return;
   }
 
   const id = String(formData.get("id") ?? "");
 
-  await toggleTask(id);
+  // toggleTask only matches tasks owned by this user, so a forged id for
+  // someone else's task changes nothing.
+  await toggleTask(user.id, id);
   revalidatePath("/tasks");
 }
