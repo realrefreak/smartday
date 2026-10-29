@@ -1,0 +1,91 @@
+# CI ("continuous integration"): GitHub runs these checks on its own machines
+# every time code is pushed or a pull request is opened. A red ❌ means
+# "don't merge / don't deploy this yet".
+#
+# Structure: a workflow has jobs; a job runs on a fresh virtual machine and
+# executes its steps in order. If any step fails, the job stops and fails.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Only one CI run at a time. All runs share the same test database, and the
+# database tests delete every task in it, so two overlapping runs could break
+# each other. Newer runs wait in line.
+concurrency:
+  group: ci-test-database
+  cancel-in-progress: false
+
+# The workflow only needs to read the code, nothing else.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, unit tests, E2E tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Comes from Settings -> Secrets and variables -> Actions in GitHub.
+      # Never written in this file: anyone who can read the repo can read this file.
+      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          # Reuse downloaded packages between runs (faster installs).
+          cache: npm
+
+      # `npm ci` installs exactly what package-lock.json says. Unlike
+      # `npm install`, it never changes the lock file, so CI tests the same
+      # versions you tested locally.
+      - name: Install dependencies
+        run: npm ci
+
+      # Without the test database, the database tests would be quietly skipped
+      # and CI would look green while testing less. Fail loudly instead.
+      - name: Check the test database secret is set
+        run: |
+          if [ -z "$TEST_DATABASE_URL" ]; then
+            echo "::error::TEST_DATABASE_URL secret is missing. Add it in the repo's Actions secrets."
+            exit 1
+          fi
+
+      # Fastest checks first, so obvious mistakes fail within seconds.
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit and database tests (Vitest)
+        run: npm run test:run
+
+      - name: Install Playwright's browser
+        run: npx playwright install --with-deps chromium
+
+      # A throwaway secret for signing session cookies, made fresh for every
+      # run. The test app only lives for a few minutes, so nothing needs to
+      # stay signed in afterwards, and there is no real secret to leak.
+      - name: Create a one-off auth secret
+        run: echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
+      - name: End-to-end tests (Playwright)
+        run: npm run test:e2e
+
+      # If E2E tests fail, keep the traces so you can download and replay them:
+      #   npx playwright show-trace trace.zip
+      - name: Save Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
