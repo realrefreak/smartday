@@ -1,9 +1,11 @@
-# CI ("continuous integration"): GitHub runs these checks on its own machines
-# every time code is pushed or a pull request is opened. A red ❌ means
-# "don't merge / don't deploy this yet".
+# CI/CD: GitHub runs these checks on its own machines every time code is
+# pushed or a pull request is opened. A red ❌ means "don't merge / don't
+# deploy this yet". On pushes to main, a passing run then deploys to production.
 #
 # Structure: a workflow has jobs; a job runs on a fresh virtual machine and
 # executes its steps in order. If any step fails, the job stops and fails.
+#
+#   checks ──(passed, and this is a push to main)──> deploy
 
 name: CI
 
@@ -12,9 +14,10 @@ on:
     branches: [main]
   pull_request:
 
-# Only one CI run at a time. All runs share the same test database, and the
+# Only one run at a time. All runs share the same test database, and the
 # database tests delete every task in it, so two overlapping runs could break
-# each other. Newer runs wait in line.
+# each other. It also means two deploys can never migrate production at once.
+# Newer runs wait in line.
 concurrency:
   group: ci-test-database
   cancel-in-progress: false
@@ -89,3 +92,92 @@ jobs:
           name: playwright-traces
           path: test-results/
           retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # CD ("continuous deployment"): ship to production, but only if every check
+  # above passed. Vercel's own auto-deploy of main is turned off in vercel.json,
+  # so this job is the only way code reaches the live site.
+  deploy:
+    name: Migrate database and deploy to Vercel
+    # Wait for the checks job, and skip this job entirely if it failed.
+    needs: checks
+    # Only real pushes to main go live. Pull requests stop after the checks.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Secrets for this job live in the GitHub environment named "production"
+    # (Settings -> Environments), not in the repo-wide secrets, so the checks
+    # job and pull requests can never read them. GitHub also lists each deploy
+    # on the repo page, with a link to the live site.
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
+    env:
+      # Which Vercel team and project to deploy to. Not secret: they're IDs, not
+      # passwords. Stored as environment *variables* (vars), not secrets.
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      # Lets the Vercel CLI act as you. Treat it like a password.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail with a clear message instead of a confusing error halfway through.
+      - name: Check the production secrets are set
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          missing=0
+          for name in PRODUCTION_DATABASE_URL VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is missing. Add it to the 'production' environment in GitHub."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      # Database first, then code. The new code may need new tables or columns,
+      # so they must exist before it goes live. Until the deploy below finishes,
+      # the OLD code runs against the NEW database, which is why migrations
+      # must only add things, never rename or delete what old code still uses.
+      # Drizzle records applied migrations, so ones already run are skipped.
+      - name: Migrate the production database
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: npm run db:migrate
+
+      # Pinned to an exact version, like package-lock.json does for the app,
+      # so a new CLI release can't change how we deploy without us knowing.
+      - name: Install the Vercel CLI
+        run: npm install --global vercel@65.9.0
+
+      # Download the project's settings and non-sensitive env vars from Vercel.
+      # Sensitive values (DATABASE_URL, BETTER_AUTH_SECRET) stay on Vercel and
+      # are given to the app when it runs, so they never touch this machine.
+      - name: Get Vercel project settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      # Build here on GitHub's machine, then upload the finished result.
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to production
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          echo "Deployed to $url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
