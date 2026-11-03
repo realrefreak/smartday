@@ -102,6 +102,26 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     expect(titles).toEqual(["Sooner", "Later", "Also later", "No date"]);
   });
 
+  it("filters to active or done tasks, keeping the due-date order", async () => {
+    const later = await addTask(A, "Later", "2026-12-24");
+    const sooner = await addTask(A, "Sooner", "2026-11-20");
+    const finished = await addTask(A, "Finished");
+    await toggleTask(A, finished.id);
+
+    const titles = async (filter) => (await listTasks(A, { filter })).map((t) => t.title);
+
+    expect(await titles("active")).toEqual([sooner.title, later.title]);
+    expect(await titles("done")).toEqual(["Finished"]);
+    expect(await titles("all")).toEqual(["Sooner", "Later", "Finished"]);
+  });
+
+  it("never lets a filter show another user's tasks", async () => {
+    const bTask = await addTask(B, "B's finished task");
+    await toggleTask(B, bTask.id);
+
+    expect(await listTasks(A, { filter: "done" })).toEqual([]);
+  });
+
   it("toggles a task to completed and back", async () => {
     const task = await addTask(A, "Walk the dog");
 

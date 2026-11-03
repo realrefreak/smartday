@@ -149,3 +149,42 @@ test("edit a task, cancel an edit, and delete a task after confirming", async ({
   await expect(page.getByRole("listitem")).toHaveCount(1);
   await expect(taskRow(page, "Buy milk")).toBeVisible();
 });
+
+test("filter tasks by All / Active / Done, kept in the URL", async ({ page }) => {
+  await signUp(page, { email: uniqueEmail("filter") });
+  await addTask(page, "Still to do");
+  await addTask(page, "Already done");
+  await taskRow(page, "Already done").getByRole("button", { name: "Mark done" }).click();
+  await expect(taskRow(page, "Already done").getByRole("button", { name: "Undo" })).toBeVisible();
+
+  const filters = page.getByRole("navigation", { name: "Filter tasks" });
+
+  await filters.getByRole("link", { name: "Active" }).click();
+  await expect(page).toHaveURL("/tasks?show=active");
+  await expect(filters.getByRole("link", { name: "Active" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(taskRow(page, "Still to do")).toBeVisible();
+
+  await filters.getByRole("link", { name: "Done" }).click();
+  await expect(page).toHaveURL("/tasks?show=done");
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(taskRow(page, "Already done")).toBeVisible();
+
+  // The filter lives in the URL, so it survives a reload...
+  await page.reload();
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(taskRow(page, "Already done")).toBeVisible();
+
+  // ...and the back button goes to the previous filter.
+  await page.goBack();
+  await expect(page).toHaveURL("/tasks?show=active");
+  await expect(taskRow(page, "Still to do")).toBeVisible();
+
+  // Finishing the last active task empties the Active list.
+  await taskRow(page, "Still to do").getByRole("button", { name: "Mark done" }).click();
+  await expect(page.getByText("Nothing left to do.")).toBeVisible();
+
+  // A made-up filter in the URL just shows everything.
+  await page.goto("/tasks?show=banana");
+  await expect(page.getByRole("listitem")).toHaveCount(2);
+});
