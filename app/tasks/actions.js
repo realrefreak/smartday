@@ -9,7 +9,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
-import { addTask, toggleTask } from "@/lib/tasks";
+import { addTask, deleteTask, toggleTask, updateTask } from "@/lib/tasks";
 import { validateDueDate, validateTaskTitle } from "@/lib/task-validation";
 
 const SIGNED_OUT_ERROR = "Your session has ended. Please sign in again.";
@@ -65,5 +65,56 @@ export async function toggleTaskAction(formData) {
   // toggleTask only matches tasks owned by this user, so a forged id for
   // someone else's task changes nothing.
   await toggleTask(user.id, id);
+  revalidatePath("/tasks");
+}
+
+// Saves an edited task. Used with useActionState, like createTaskAction, and
+// returns the same kind of state plus ok: true when the save worked (the edit
+// form uses that to close itself). It reuses the exact same validation as
+// creating a task, so editing can't sneak in a title or date that adding
+// would refuse.
+export async function updateTaskAction(prevState, formData) {
+  const id = asText(formData.get("id"));
+  const rawTitle = formData.get("title");
+  const rawDueDate = formData.get("dueDate");
+  const typed = { title: asText(rawTitle), dueDate: asText(rawDueDate) };
+
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, error: SIGNED_OUT_ERROR, field: "", ...typed };
+  }
+
+  const title = validateTaskTitle(rawTitle);
+  if (!title.ok) {
+    return { ok: false, error: title.error, field: "title", ...typed };
+  }
+
+  const dueDate = validateDueDate(rawDueDate);
+  if (!dueDate.ok) {
+    return { ok: false, error: dueDate.error, field: "dueDate", ...typed };
+  }
+
+  // updateTask only matches tasks owned by this user. null means the task was
+  // deleted (e.g. in another tab) or the id was forged.
+  const task = await updateTask(user.id, id, {
+    title: title.title,
+    dueDate: dueDate.dueDate,
+  });
+  if (!task) {
+    return { ok: false, error: "This task no longer exists. Reload the page.", field: "", ...typed };
+  }
+
+  revalidatePath("/tasks");
+  return { ok: true, error: "", field: "", ...typed };
+}
+
+export async function deleteTaskAction(formData) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return;
+  }
+
+  // Like toggling: only matches this user's own task.
+  await deleteTask(user.id, String(formData.get("id") ?? ""));
   revalidatePath("/tasks");
 }

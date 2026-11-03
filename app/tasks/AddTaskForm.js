@@ -5,24 +5,17 @@
 import { useActionState } from "react";
 import { createTaskAction } from "./actions";
 import { TITLE_MAX_LENGTH } from "@/lib/task-validation";
+import { fieldErrorProps } from "./field-error-props";
+import { inputClass } from "./styles";
 
 const initialState = { error: "", field: "", title: "", dueDate: "" };
-
-const inputClass =
-  "rounded border border-black/20 px-3 py-2 dark:border-white/25 dark:bg-transparent";
 
 export default function AddTaskForm() {
   // state   = whatever createTaskAction returned last time
   // action  = pass this to <form action>; React calls createTaskAction for us
   // pending = true while the action is running
   const [state, action, pending] = useActionState(createTaskAction, initialState);
-
-  // Point screen readers at the error from the input it's about.
-  // An error with no field (e.g. signed out) applies to the whole form.
-  function errorProps(field) {
-    const isInvalid = state.error && (state.field === field || !state.field);
-    return isInvalid ? { "aria-invalid": true, "aria-describedby": "form-error" } : {};
-  }
+  const errorProps = (field) => fieldErrorProps(state, field, "form-error");
 
   return (
     <form action={action} className="space-y-2">

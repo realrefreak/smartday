@@ -48,8 +48,11 @@ test("two users never see each other's tasks", async ({ browser }) => {
 
   await ana.reload();
   await ben.reload();
-  await expect(ana.getByRole("listitem")).toHaveText(["Ana's secret planMark done"]);
-  await expect(ben.getByRole("listitem")).toHaveText(["Ben's groceriesMark done"]);
+  // Each person sees exactly one task: their own.
+  await expect(ana.getByRole("listitem")).toHaveCount(1);
+  await expect(ana.getByRole("listitem")).toContainText("Ana's secret plan");
+  await expect(ben.getByRole("listitem")).toHaveCount(1);
+  await expect(ben.getByRole("listitem")).toContainText("Ben's groceries");
 
   await anaContext.close();
   await benContext.close();
@@ -104,4 +107,45 @@ test.describe("just after midnight in India", () => {
       "No rush",
     ]);
   });
+});
+
+test("edit a task, cancel an edit, and delete a task after confirming", async ({ page }) => {
+  await signUp(page, { email: uniqueEmail("edit") });
+  await addTask(page, "Buy mlik", { dueDate: "2026-12-01" });
+  await addTask(page, "Old task");
+
+  // Edit: fix the typo and remove the due date.
+  await taskRow(page, "Buy mlik").getByRole("button", { name: "Edit" }).click();
+  const editRow = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "Save" }) });
+  await editRow.getByLabel("Title").fill("Buy milk");
+  await editRow.getByLabel("Due date").fill("");
+  await editRow.getByRole("button", { name: "Save" }).click();
+
+  await expect(taskRow(page, "Buy milk")).toBeVisible();
+  await expect(taskRow(page, "Buy milk")).not.toContainText("Due");
+  await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+
+  // Edit validation is the same as adding: spaces only are refused.
+  await taskRow(page, "Buy milk").getByRole("button", { name: "Edit" }).click();
+  await editRow.getByLabel("Title").fill("   ");
+  await editRow.getByRole("button", { name: "Save" }).click();
+  await expect(editRow.getByRole("alert")).toHaveText("Please enter a task title.");
+
+  // Cancel throws the change away.
+  await editRow.getByRole("button", { name: "Cancel" }).click();
+  await expect(taskRow(page, "Buy milk")).toBeVisible();
+
+  // Delete, but say "Cancel" in the confirm box: nothing happens.
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await taskRow(page, "Old task").getByRole("button", { name: "Delete" }).click();
+  await expect(taskRow(page, "Old task")).toBeVisible();
+
+  // Delete and confirm: it's gone, even after a reload.
+  page.once("dialog", (dialog) => dialog.accept());
+  await taskRow(page, "Old task").getByRole("button", { name: "Delete" }).click();
+  await expect(taskRow(page, "Old task")).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByRole("listitem")).toHaveCount(1);
+  await expect(taskRow(page, "Buy milk")).toBeVisible();
 });

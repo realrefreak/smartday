@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { user } from "@/db/schema";
-import { addTask, clearTasks, listTasks, toggleTask } from "@/lib/tasks";
+import {
+  addTask,
+  clearTasks,
+  deleteTask,
+  listTasks,
+  toggleTask,
+  updateTask,
+} from "@/lib/tasks";
 
 // These checks never reach the database, so they always run.
 describe("task store safety checks", () => {
@@ -15,6 +22,15 @@ describe("task store safety checks", () => {
     await expect(listTasks(undefined)).rejects.toThrow(/userId is required/);
     await expect(addTask("", "Buy milk")).rejects.toThrow(/userId is required/);
     await expect(toggleTask(null, "x")).rejects.toThrow(/userId is required/);
+    await expect(updateTask("", "x", { title: "t", dueDate: null })).rejects.toThrow(
+      /userId is required/,
+    );
+    await expect(deleteTask(undefined, "x")).rejects.toThrow(/userId is required/);
+  });
+
+  it("ignores ids that aren't UUIDs when editing or deleting", async () => {
+    expect(await updateTask("user-a", "nope", { title: "t", dueDate: null })).toBeNull();
+    expect(await deleteTask("user-a", "nope")).toBe(false);
   });
 
   it("refuses to clear tasks outside of tests", async () => {
@@ -93,6 +109,34 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     expect((await toggleTask(A, task.id)).completed).toBe(false);
   });
 
+  it("edits a task's title and due date", async () => {
+    const task = await addTask(A, "Buy mlik");
+
+    const updated = await updateTask(A, task.id, { title: "Buy milk", dueDate: "2026-12-01" });
+
+    expect(updated.title).toBe("Buy milk");
+    expect(updated.dueDate).toBe("2026-12-01");
+    // Editing doesn't touch anything else.
+    expect(updated.completed).toBe(false);
+    expect(updated.createdAt).toEqual(task.createdAt);
+  });
+
+  it("can remove a due date by setting it to null", async () => {
+    const task = await addTask(A, "Pay rent", "2026-12-01");
+
+    expect((await updateTask(A, task.id, { title: "Pay rent", dueDate: null })).dueDate).toBeNull();
+  });
+
+  it("deletes only the chosen task", async () => {
+    const keep = await addTask(A, "Keep me");
+    const remove = await addTask(A, "Delete me");
+
+    expect(await deleteTask(A, remove.id)).toBe(true);
+    expect(await listTasks(A)).toEqual([keep]);
+    // Deleting again finds nothing.
+    expect(await deleteTask(A, remove.id)).toBe(false);
+  });
+
   it("returns null when toggling a valid but unknown id", async () => {
     expect(await toggleTask(A, "00000000-0000-4000-8000-000000000000")).toBeNull();
   });
@@ -115,6 +159,23 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
 
     const [unchanged] = await listTasks(A);
     expect(unchanged.completed).toBe(false);
+  });
+
+  it("does not let one user edit another user's task", async () => {
+    const aTask = await addTask(A, "A's task", "2026-12-01");
+
+    expect(await updateTask(B, aTask.id, { title: "Hacked", dueDate: null })).toBeNull();
+
+    const [unchanged] = await listTasks(A);
+    expect(unchanged.title).toBe("A's task");
+    expect(unchanged.dueDate).toBe("2026-12-01");
+  });
+
+  it("does not let one user delete another user's task", async () => {
+    const aTask = await addTask(A, "A's task");
+
+    expect(await deleteTask(B, aTask.id)).toBe(false);
+    expect(await listTasks(A)).toHaveLength(1);
   });
 
   it("deletes a user's tasks when the user is deleted", async () => {

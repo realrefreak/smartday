@@ -10,7 +10,9 @@ vi.mock("next/cache", () => ({
 // action's own logic (validate, save, refresh), not of the database.
 vi.mock("@/lib/tasks", () => ({
   addTask: vi.fn(),
+  deleteTask: vi.fn(),
   toggleTask: vi.fn(),
+  updateTask: vi.fn(),
 }));
 
 // Fake "who is signed in". Each test decides by setting what it returns.
@@ -20,8 +22,13 @@ vi.mock("@/lib/session", () => ({
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
-import { addTask, toggleTask } from "@/lib/tasks";
-import { createTaskAction, toggleTaskAction } from "@/app/tasks/actions";
+import { addTask, deleteTask, toggleTask, updateTask } from "@/lib/tasks";
+import {
+  createTaskAction,
+  deleteTaskAction,
+  toggleTaskAction,
+  updateTaskAction,
+} from "@/app/tasks/actions";
 
 const signedInUser = { id: "user-1", email: "a@example.com" };
 
@@ -123,6 +130,101 @@ describe("toggleTaskAction", () => {
     await toggleTaskAction(data);
 
     expect(toggleTask).toHaveBeenCalledWith("user-1", "00000000-0000-4000-8000-000000000000");
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+});
+
+const TASK_ID = "00000000-0000-4000-8000-000000000000";
+
+// The FormData the edit form sends.
+function editForm(title, dueDate = "") {
+  const data = form(title, dueDate);
+  data.set("id", TASK_ID);
+  return data;
+}
+
+describe("updateTaskAction", () => {
+  const before = { ok: false, error: "", field: "", title: "Old", dueDate: "" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getCurrentUser.mockResolvedValue(signedInUser);
+    // By default the task exists and belongs to the user.
+    updateTask.mockResolvedValue({ id: TASK_ID });
+  });
+
+  it("refuses to save anything when nobody is signed in", async () => {
+    getCurrentUser.mockResolvedValue(null);
+
+    const state = await updateTaskAction(before, editForm("New"));
+
+    expect(state.ok).toBe(false);
+    expect(state.error).toMatch(/sign in/i);
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it("saves the trimmed title and date for the signed-in user", async () => {
+    const state = await updateTaskAction(before, editForm("  New title  ", "2026-12-01"));
+
+    expect(state.ok).toBe(true);
+    expect(updateTask).toHaveBeenCalledWith("user-1", TASK_ID, {
+      title: "New title",
+      dueDate: "2026-12-01",
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("clears the due date when the date box is emptied", async () => {
+    await updateTaskAction(before, editForm("New title", ""));
+
+    expect(updateTask).toHaveBeenCalledWith("user-1", TASK_ID, { title: "New title", dueDate: null });
+  });
+
+  it("uses the same validation as adding a task", async () => {
+    const blank = await updateTaskAction(before, editForm("   "));
+    expect(blank).toMatchObject({ ok: false, field: "title", error: "Please enter a task title." });
+
+    const badDate = await updateTaskAction(before, editForm("New", "2026-02-30"));
+    expect(badDate).toMatchObject({ ok: false, field: "dueDate", dueDate: "2026-02-30" });
+
+    expect(updateTask).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("explains when the task no longer exists (or isn't yours)", async () => {
+    updateTask.mockResolvedValue(null);
+
+    const state = await updateTaskAction(before, editForm("New"));
+
+    expect(state.ok).toBe(false);
+    expect(state.error).toMatch(/no longer exists/);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteTaskAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("does nothing when nobody is signed in", async () => {
+    getCurrentUser.mockResolvedValue(null);
+    const data = new FormData();
+    data.set("id", TASK_ID);
+
+    await deleteTaskAction(data);
+
+    expect(deleteTask).not.toHaveBeenCalled();
+  });
+
+  it("deletes on behalf of the signed-in user only", async () => {
+    getCurrentUser.mockResolvedValue(signedInUser);
+    const data = new FormData();
+    data.set("id", TASK_ID);
+
+    await deleteTaskAction(data);
+
+    expect(deleteTask).toHaveBeenCalledWith("user-1", TASK_ID);
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 });

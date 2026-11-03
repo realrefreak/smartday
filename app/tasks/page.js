@@ -1,8 +1,7 @@
 import { requireUser } from "@/lib/session";
 import { listTasks } from "@/lib/tasks";
-import { toggleTaskAction } from "./actions";
 import AddTaskForm from "./AddTaskForm";
-import DueDate from "./DueDate";
+import TaskItem from "./TaskItem";
 
 export const metadata = {
   title: "Tasks",
@@ -30,32 +29,16 @@ export default async function TasksPage() {
         </p>
       ) : (
         <ul className="divide-y divide-black/10 dark:divide-white/15">
+          {/* TaskItem is a Client Component (it has an edit mode), so pass
+              only what it needs: these values are sent to the browser. */}
           {tasks.map((task) => (
-            <li key={task.id} className="flex items-center justify-between py-3">
-              <div>
-                <span
-                  className={
-                    task.completed ? "text-zinc-500 line-through" : undefined
-                  }
-                >
-                  {task.title}
-                </span>
-
-                {/* Client Component: adds "Overdue"/"Today" using the
-                    browser's own date. */}
-                {task.dueDate && (
-                  <DueDate dueDate={task.dueDate} completed={task.completed} />
-                )}
-              </div>
-
-              {/* Each task gets its own tiny form; the hidden input tells the action which task. */}
-              <form action={toggleTaskAction}>
-                <input type="hidden" name="id" value={task.id} />
-                <button type="submit" className="text-sm hover:underline">
-                  {task.completed ? "Undo" : "Mark done"}
-                </button>
-              </form>
-            </li>
+            <TaskItem
+              key={task.id}
+              id={task.id}
+              title={task.title}
+              dueDate={task.dueDate}
+              completed={task.completed}
+            />
           ))}
         </ul>
       )}
