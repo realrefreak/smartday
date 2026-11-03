@@ -1,11 +1,14 @@
 # CI/CD: GitHub runs these checks on its own machines every time code is
 # pushed or a pull request is opened. A red ❌ means "don't merge / don't
 # deploy this yet". On pushes to main, a passing run then deploys to production.
+# On pull requests, a passing run deploys a preview with its own database.
 #
 # Structure: a workflow has jobs; a job runs on a fresh virtual machine and
 # executes its steps in order. If any step fails, the job stops and fails.
 #
-#   checks ──(passed, and this is a push to main)──> deploy
+#   checks ──(passed, push to main)──────> deploy           (production)
+#   checks ──(passed, pull request)──────> preview          (preview URL + preview database)
+#   pull request closed or merged ───────> preview-cleanup  (deletes the preview database)
 
 name: CI
 
@@ -13,6 +16,8 @@ on:
   push:
     branches: [main]
   pull_request:
+    # The defaults, plus "closed" so we can clean up the preview database.
+    types: [opened, synchronize, reopened, closed]
 
 # Only one run at a time. All runs share the same test database, and the
 # database tests delete every task in it, so two overlapping runs could break
@@ -29,6 +34,8 @@ permissions:
 jobs:
   checks:
     name: Lint, unit tests, E2E tests
+    # Nothing to test when a pull request is closed; only cleanup runs then.
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -188,3 +195,136 @@ jobs:
           url=$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")
           echo "Deployed to $url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Preview: every pull request gets its own live copy of the app, with its own
+  # database, so a feature can be tried online before it reaches main.
+  preview:
+    name: Deploy a preview with its own database
+    needs: checks
+    # Only for pull requests from this repository (a fork's code must never
+    # run with our secrets), and not when the pull request is being closed.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Separate GitHub environment from production: different secrets, and it
+    # can't touch the production database. The URL appears on the pull request.
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # One Neon branch per pull request, e.g. preview/pr-12.
+      PREVIEW_BRANCH: preview/pr-${{ github.event.pull_request.number }}
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check the preview secrets are set
+        run: |
+          missing=0
+          for name in NEON_API_KEY NEON_PROJECT_ID VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is missing. Add it to the 'preview' environment in GitHub."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      # Pinned versions, like the app's own dependencies.
+      - name: Install the Vercel and Neon CLIs
+        run: npm install --global vercel@65.9.0 neonctl@8.8.0
+
+      # First push of a pull request: copy the production branch. Later pushes
+      # reuse the same database, so test data survives between pushes.
+      - name: Create or reuse the preview database
+        id: database
+        run: |
+          if neonctl branches get "$PREVIEW_BRANCH" --project-id "$NEON_PROJECT_ID" > /dev/null 2>&1; then
+            echo "Reusing existing database branch $PREVIEW_BRANCH."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            # Output goes to /dev/null: it includes the password.
+            neonctl branches create --project-id "$NEON_PROJECT_ID" \
+              --name "$PREVIEW_BRANCH" --parent production > /dev/null
+            echo "Created database branch $PREVIEW_BRANCH from production."
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          url=$(neonctl connection-string "$PREVIEW_BRANCH" --project-id "$NEON_PROJECT_ID" --pooled)
+          # Hide it in all later log output, then share it with later steps.
+          echo "::add-mask::$url"
+          echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
+
+      # A fresh copy of production contains real users: remove them.
+      - name: Remove copied users from the new preview database
+        if: steps.database.outputs.created == 'true'
+        run: node scripts/wipe-preview-users.mjs
+
+      # Same rule as production: database first, then code.
+      - name: Migrate the preview database
+        run: npm run db:migrate
+
+      - name: Get Vercel project settings
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+
+      - name: Build
+        run: vercel build --token="$VERCEL_TOKEN"
+
+      # No --prod, so this is a preview deployment. --env gives this one
+      # deployment its own database address, without storing it in Vercel's
+      # settings (where it would apply to every preview).
+      - name: Deploy the preview
+        id: deploy
+        run: |
+          url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN" --env DATABASE_URL="$DATABASE_URL")
+          echo "Preview deployed to $url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  # Once a pull request is merged or closed, its preview database is no longer
+  # needed. Deleting it frees up Neon's branch limit (free plans allow only a
+  # few). The preview URL itself stays in Vercel's history, but with no database
+  # behind it.
+  preview-cleanup:
+    name: Delete the preview database
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: preview
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      PREVIEW_BRANCH: preview/pr-${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Delete the Neon branch
+        run: |
+          if npx --yes neonctl@8.8.0 branches get "$PREVIEW_BRANCH" --project-id "$NEON_PROJECT_ID" > /dev/null 2>&1; then
+            npx --yes neonctl@8.8.0 branches delete "$PREVIEW_BRANCH" --project-id "$NEON_PROJECT_ID" > /dev/null
+            echo "Deleted $PREVIEW_BRANCH."
+          else
+            echo "$PREVIEW_BRANCH doesn't exist (no preview was deployed). Nothing to do."
+          fi
