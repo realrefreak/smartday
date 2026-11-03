@@ -75,6 +75,17 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     expect(titles).toEqual(["First", "Second"]);
   });
 
+  it("lists the soonest due date first and undated tasks last", async () => {
+    await addTask(A, "No date");
+    await addTask(A, "Later", "2026-12-24");
+    await addTask(A, "Sooner", "2026-11-20");
+    await addTask(A, "Also later", "2026-12-24");
+
+    const titles = (await listTasks(A)).map((t) => t.title);
+    // Same date: the one added first comes first.
+    expect(titles).toEqual(["Sooner", "Later", "Also later", "No date"]);
+  });
+
   it("toggles a task to completed and back", async () => {
     const task = await addTask(A, "Walk the dog");
 

@@ -1,8 +1,8 @@
 import { requireUser } from "@/lib/session";
-import { formatDueDate } from "@/lib/due-date";
 import { listTasks } from "@/lib/tasks";
 import { toggleTaskAction } from "./actions";
 import AddTaskForm from "./AddTaskForm";
+import DueDate from "./DueDate";
 
 export const metadata = {
   title: "Tasks",
@@ -41,12 +41,10 @@ export default async function TasksPage() {
                   {task.title}
                 </span>
 
-                {/* <time dateTime> gives the exact date to machines (screen
-                    readers, search engines) alongside the friendly text. */}
+                {/* Client Component: adds "Overdue"/"Today" using the
+                    browser's own date. */}
                 {task.dueDate && (
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    Due <time dateTime={task.dueDate}>{formatDueDate(task.dueDate)}</time>
-                  </p>
+                  <DueDate dueDate={task.dueDate} completed={task.completed} />
                 )}
               </div>
 

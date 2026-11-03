@@ -69,3 +69,39 @@ test("a task can have a due date, and it survives a page reload", async ({ page 
   await page.reload();
   await expect(taskRow(page, "Pay rent")).toContainText("Due 1 Dec 2026");
 });
+
+// The browser pretends to be in India at 00:30 on 15 Nov 2026. In UTC, where
+// the server runs, it's still 14 Nov. Labels must follow the user's date.
+test.describe("just after midnight in India", () => {
+  test.use({ timezoneId: "Asia/Kolkata" });
+
+  test("Overdue and Today use the browser's date, and tasks sort by due date", async ({ page }) => {
+    // 19:00 UTC on 14 Nov = 00:30 IST on 15 Nov. Must be set before the page loads.
+    await page.clock.setFixedTime(new Date("2026-11-14T19:00:00Z"));
+    await signUp(page, { email: uniqueEmail("overdue") });
+
+    await addTask(page, "Gym", { dueDate: "2026-11-16" });
+    await addTask(page, "Rent", { dueDate: "2026-11-15" });
+    await addTask(page, "Dentist", { dueDate: "2026-11-14" });
+    await addTask(page, "Library book", { dueDate: "2026-11-14" });
+    await addTask(page, "No rush");
+
+    // Finished tasks are never shown as overdue.
+    await taskRow(page, "Library book").getByRole("button", { name: "Mark done" }).click();
+    await expect(taskRow(page, "Library book").getByRole("button", { name: "Undo" })).toBeVisible();
+
+    await expect(taskRow(page, "Dentist")).toContainText("Overdue");
+    await expect(taskRow(page, "Rent")).toContainText("Today");
+    await expect(taskRow(page, "Gym")).not.toContainText(/Overdue|Today/);
+    await expect(taskRow(page, "Library book")).not.toContainText("Overdue");
+
+    // Soonest first, undated last (same date: added first comes first).
+    await expect(page.getByRole("listitem")).toContainText([
+      "Dentist",
+      "Library book",
+      "Rent",
+      "Gym",
+      "No rush",
+    ]);
+  });
+});

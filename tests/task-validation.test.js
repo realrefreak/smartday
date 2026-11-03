@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TITLE_MAX_LENGTH, validateDueDate, validateTaskTitle } from "@/lib/task-validation";
-import { formatDueDate } from "@/lib/due-date";
+import { dueDateStatus, formatDueDate, toLocalDateString } from "@/lib/due-date";
 
 describe("validateTaskTitle", () => {
   it("accepts a normal title", () => {
@@ -90,5 +90,31 @@ describe("formatDueDate", () => {
 
   it("never shifts the day, even at the start of a month or year", () => {
     expect(formatDueDate("2027-01-01")).toBe("1 Jan 2027");
+  });
+});
+
+describe("toLocalDateString", () => {
+  it("uses the local calendar day, padding month and day", () => {
+    // new Date(year, monthIndex, day, hour) is in local time; month 0 = January.
+    expect(toLocalDateString(new Date(2027, 0, 5, 0, 30))).toBe("2027-01-05");
+    expect(toLocalDateString(new Date(2026, 10, 15, 23, 59))).toBe("2026-11-15");
+  });
+});
+
+describe("dueDateStatus", () => {
+  const today = "2026-11-15";
+
+  it("is overdue when the due date has passed", () => {
+    expect(dueDateStatus("2026-11-14", today)).toBe("overdue");
+    expect(dueDateStatus("2025-12-31", today)).toBe("overdue");
+  });
+
+  it("is today when the due date is today", () => {
+    expect(dueDateStatus("2026-11-15", today)).toBe("today");
+  });
+
+  it("is upcoming when the due date is in the future", () => {
+    expect(dueDateStatus("2026-11-16", today)).toBe("upcoming");
+    expect(dueDateStatus("2027-01-01", today)).toBe("upcoming");
   });
 });
