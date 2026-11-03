@@ -2,7 +2,7 @@
 // drizzle-kit reads this file to generate SQL migrations, and our code imports
 // it to build type-safe queries.
 
-import { boolean, index, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, index, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { TITLE_MAX_LENGTH } from "../lib/task-validation.js";
 import { user } from "./auth-schema.js";
 
@@ -27,6 +27,12 @@ export const tasks = pgTable(
     title: varchar("title", { length: TITLE_MAX_LENGTH }).notNull(),
 
     completed: boolean("completed").notNull().default(false),
+
+    // Optional due date. SQL "date" is just a calendar day: no time, no time
+    // zone, so 15 Nov stays 15 Nov wherever the server runs. mode "string"
+    // gives "2026-11-15" in JavaScript instead of a Date object, which would
+    // bring time zones back in. Nullable: tasks without a date are fine.
+    dueDate: date("due_date", { mode: "string" }),
 
     // "created_at" in SQL, createdAt in JavaScript. Stored with time zone.
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

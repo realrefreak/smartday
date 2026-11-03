@@ -37,8 +37,12 @@ export function formError(page) {
   return page.locator("form").getByRole("alert");
 }
 
-export async function addTask(page, title) {
+// dueDate is optional, as "YYYY-MM-DD" (what a date input accepts).
+export async function addTask(page, title, { dueDate } = {}) {
   await page.getByLabel("New task").fill(title);
+  if (dueDate) {
+    await page.getByLabel("Due date").fill(dueDate);
+  }
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByRole("listitem").filter({ hasText: title })).toBeVisible();
 }

@@ -25,14 +25,16 @@ import { createTaskAction, toggleTaskAction } from "@/app/tasks/actions";
 
 const signedInUser = { id: "user-1", email: "a@example.com" };
 
-// Builds the same FormData a browser would send.
-function form(title) {
+// Builds the same FormData a browser would send. An empty date input still
+// sends dueDate as "", so that's the default here too.
+function form(title, dueDate = "") {
   const data = new FormData();
   data.set("title", title);
+  data.set("dueDate", dueDate);
   return data;
 }
 
-const initialState = { error: "", title: "" };
+const initialState = { error: "", field: "", title: "", dueDate: "" };
 
 describe("createTaskAction", () => {
   beforeEach(() => {
@@ -53,10 +55,30 @@ describe("createTaskAction", () => {
   it("saves a valid task, trimmed, and refreshes the page", async () => {
     const state = await createTaskAction(initialState, form("  Buy milk  "));
 
-    expect(state).toEqual({ error: "", title: "" });
-    // The owner comes from the session, not the form.
-    expect(addTask).toHaveBeenCalledWith("user-1", "Buy milk");
+    expect(state).toEqual(initialState);
+    // The owner comes from the session, not the form. No date given = null.
+    expect(addTask).toHaveBeenCalledWith("user-1", "Buy milk", null);
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("saves the due date when one is given", async () => {
+    const state = await createTaskAction(initialState, form("Pay rent", "2026-12-01"));
+
+    expect(state).toEqual(initialState);
+    expect(addTask).toHaveBeenCalledWith("user-1", "Pay rent", "2026-12-01");
+  });
+
+  it("rejects an impossible due date and keeps both typed values", async () => {
+    const state = await createTaskAction(initialState, form("Pay rent", "2026-02-30"));
+
+    expect(state).toEqual({
+      error: "Please enter a valid due date.",
+      field: "dueDate",
+      title: "Pay rent",
+      dueDate: "2026-02-30",
+    });
+    expect(addTask).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("returns an error and saves nothing for a blank title", async () => {

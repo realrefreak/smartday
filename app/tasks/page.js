@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/session";
+import { formatDueDate } from "@/lib/due-date";
 import { listTasks } from "@/lib/tasks";
 import { toggleTaskAction } from "./actions";
 import AddTaskForm from "./AddTaskForm";
@@ -31,13 +32,23 @@ export default async function TasksPage() {
         <ul className="divide-y divide-black/10 dark:divide-white/15">
           {tasks.map((task) => (
             <li key={task.id} className="flex items-center justify-between py-3">
-              <span
-                className={
-                  task.completed ? "text-zinc-500 line-through" : undefined
-                }
-              >
-                {task.title}
-              </span>
+              <div>
+                <span
+                  className={
+                    task.completed ? "text-zinc-500 line-through" : undefined
+                  }
+                >
+                  {task.title}
+                </span>
+
+                {/* <time dateTime> gives the exact date to machines (screen
+                    readers, search engines) alongside the friendly text. */}
+                {task.dueDate && (
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Due <time dateTime={task.dueDate}>{formatDueDate(task.dueDate)}</time>
+                  </p>
+                )}
+              </div>
 
               {/* Each task gets its own tiny form; the hidden input tells the action which task. */}
               <form action={toggleTaskAction}>

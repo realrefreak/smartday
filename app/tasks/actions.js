@@ -10,37 +10,48 @@
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
 import { addTask, toggleTask } from "@/lib/tasks";
-import { validateTaskTitle } from "@/lib/task-validation";
+import { validateDueDate, validateTaskTitle } from "@/lib/task-validation";
 
 const SIGNED_OUT_ERROR = "Your session has ended. Please sign in again.";
 
+// FormData values can be a File or missing; only strings go back to the form.
+function asText(value) {
+  return typeof value === "string" ? value : "";
+}
+
 // Used with useActionState, so it receives the previous state first, then the form data.
-// It returns the new state: an error message, plus the typed title so it isn't lost.
+// It returns the new state:
+//   error   - message to show, or "" if it worked
+//   field   - which input the error is about ("title" or "dueDate"), for screen readers
+//   title, dueDate - what the user typed, so a mistake doesn't wipe the form
 export async function createTaskAction(prevState, formData) {
   const rawTitle = formData.get("title");
+  const rawDueDate = formData.get("dueDate");
+  const typed = { title: asText(rawTitle), dueDate: asText(rawDueDate) };
 
   // The owner always comes from the session on the server, never from the form,
   // so nobody can create tasks for another user.
   const user = await getCurrentUser();
   if (!user) {
-    return { error: SIGNED_OUT_ERROR, title: typeof rawTitle === "string" ? rawTitle : "" };
+    return { error: SIGNED_OUT_ERROR, field: "", ...typed };
   }
 
-  const result = validateTaskTitle(rawTitle);
-
-  if (!result.ok) {
-    return {
-      error: result.error,
-      title: typeof rawTitle === "string" ? rawTitle : "",
-    };
+  const title = validateTaskTitle(rawTitle);
+  if (!title.ok) {
+    return { error: title.error, field: "title", ...typed };
   }
 
-  await addTask(user.id, result.title);
+  const dueDate = validateDueDate(rawDueDate);
+  if (!dueDate.ok) {
+    return { error: dueDate.error, field: "dueDate", ...typed };
+  }
+
+  await addTask(user.id, title.title, dueDate.dueDate);
 
   // Tell Next the /tasks page is out of date, so the response shows the new task.
   revalidatePath("/tasks");
 
-  return { error: "", title: "" };
+  return { error: "", field: "", title: "", dueDate: "" };
 }
 
 export async function toggleTaskAction(formData) {

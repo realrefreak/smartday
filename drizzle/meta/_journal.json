@@ -22,6 +22,13 @@
       "when": 1793072177185,
       "tag": "0002_add_task_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793706585738,
+      "tag": "0003_gorgeous_hannibal_king",
+      "breakpoints": true
     }
   ]
 }

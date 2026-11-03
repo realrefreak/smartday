@@ -56,7 +56,15 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     expect(task.title).toBe("Buy milk");
     expect(task.userId).toBe(A);
     expect(task.completed).toBe(false);
+    expect(task.dueDate).toBeNull();
     expect(await listTasks(A)).toEqual([task]);
+  });
+
+  it("stores a due date exactly as given, with no time zone shift", async () => {
+    const task = await addTask(A, "Pay rent", "2026-12-01");
+
+    expect(task.dueDate).toBe("2026-12-01");
+    expect((await listTasks(A))[0].dueDate).toBe("2026-12-01");
   });
 
   it("keeps tasks in the order they were added", async () => {

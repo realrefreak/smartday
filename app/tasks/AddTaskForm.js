@@ -6,7 +6,10 @@ import { useActionState } from "react";
 import { createTaskAction } from "./actions";
 import { TITLE_MAX_LENGTH } from "@/lib/task-validation";
 
-const initialState = { error: "", title: "" };
+const initialState = { error: "", field: "", title: "", dueDate: "" };
+
+const inputClass =
+  "rounded border border-black/20 px-3 py-2 dark:border-white/25 dark:bg-transparent";
 
 export default function AddTaskForm() {
   // state   = whatever createTaskAction returned last time
@@ -14,9 +17,16 @@ export default function AddTaskForm() {
   // pending = true while the action is running
   const [state, action, pending] = useActionState(createTaskAction, initialState);
 
+  // Point screen readers at the error from the input it's about.
+  // An error with no field (e.g. signed out) applies to the whole form.
+  function errorProps(field) {
+    const isInvalid = state.error && (state.field === field || !state.field);
+    return isInvalid ? { "aria-invalid": true, "aria-describedby": "form-error" } : {};
+  }
+
   return (
     <form action={action} className="space-y-2">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <label htmlFor="title" className="sr-only">
           New task
         </label>
@@ -27,10 +37,24 @@ export default function AddTaskForm() {
           maxLength={TITLE_MAX_LENGTH}
           defaultValue={state.title}
           placeholder="What do you need to do?"
-          aria-invalid={state.error ? true : undefined}
-          aria-describedby={state.error ? "title-error" : undefined}
-          className="flex-1 rounded border border-black/20 px-3 py-2 dark:border-white/25 dark:bg-transparent"
+          {...errorProps("title")}
+          className={`${inputClass} min-w-48 flex-1`}
         />
+
+        {/* type="date" gives a date picker, and always sends "YYYY-MM-DD"
+            whatever format the browser shows. Optional: no `required`. */}
+        <label htmlFor="dueDate" className="sr-only">
+          Due date
+        </label>
+        <input
+          id="dueDate"
+          name="dueDate"
+          type="date"
+          defaultValue={state.dueDate}
+          {...errorProps("dueDate")}
+          className={inputClass}
+        />
+
         <button
           type="submit"
           disabled={pending}
@@ -41,7 +65,7 @@ export default function AddTaskForm() {
       </div>
 
       {state.error && (
-        <p id="title-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p id="form-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
           {state.error}
         </p>
       )}

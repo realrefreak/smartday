@@ -54,3 +54,18 @@ test("two users never see each other's tasks", async ({ browser }) => {
   await anaContext.close();
   await benContext.close();
 });
+
+test("a task can have a due date, and it survives a page reload", async ({ page }) => {
+  await signUp(page, { email: uniqueEmail("due") });
+
+  await addTask(page, "Pay rent", { dueDate: "2026-12-01" });
+  await addTask(page, "Someday task");
+
+  await expect(taskRow(page, "Pay rent")).toContainText("Due 1 Dec 2026");
+  await expect(taskRow(page, "Someday task")).not.toContainText("Due");
+  // The date box clears after adding, like the title box.
+  await expect(page.getByLabel("Due date")).toHaveValue("");
+
+  await page.reload();
+  await expect(taskRow(page, "Pay rent")).toContainText("Due 1 Dec 2026");
+});
