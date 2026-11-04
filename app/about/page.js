@@ -1,4 +1,4 @@
-// Fills the "%s" in the layout's title template, so the tab reads "About | SmartDay".
+﻿// Fills the "%s" in the layout's title template, so the tab reads "About | SmartDay".
 export const metadata = {
   title: "About",
 };
@@ -12,7 +12,7 @@ export default function AboutPage() {
         production-style Next.js app.
       </p>
       <p className="text-zinc-600 dark:text-zinc-400">
-        (Preview test: if you can read this, you're on a pull request preview.)
+        (Preview test: if you can read this, you&apos;re on a pull request preview.)
       </p>
     </section>
   );
