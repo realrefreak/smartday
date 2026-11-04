@@ -4,11 +4,12 @@
 
 import { useActionState } from "react";
 import { createTaskAction } from "./actions";
-import { TITLE_MAX_LENGTH } from "@/lib/task-validation";
+import { DEFAULT_PRIORITY, TITLE_MAX_LENGTH } from "@/lib/task-validation";
+import PrioritySelect from "./PrioritySelect";
 import { fieldErrorProps } from "./field-error-props";
 import { inputClass } from "./styles";
 
-const initialState = { error: "", field: "", title: "", dueDate: "" };
+const initialState = { error: "", field: "", title: "", dueDate: "", priority: DEFAULT_PRIORITY };
 
 export default function AddTaskForm() {
   // state   = whatever createTaskAction returned last time
@@ -46,6 +47,12 @@ export default function AddTaskForm() {
           defaultValue={state.dueDate}
           {...errorProps("dueDate")}
           className={inputClass}
+        />
+
+        <PrioritySelect
+          id="priority"
+          defaultValue={state.priority}
+          {...errorProps("priority")}
         />
 
         <button

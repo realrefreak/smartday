@@ -5,6 +5,8 @@ import { user } from "@/db/schema";
 import {
   addTask,
   clearTasks,
+  countCompletedTasks,
+  deleteCompletedTasks,
   deleteTask,
   listTasks,
   toggleTask,
@@ -26,6 +28,8 @@ describe("task store safety checks", () => {
       /userId is required/,
     );
     await expect(deleteTask(undefined, "x")).rejects.toThrow(/userId is required/);
+    await expect(deleteCompletedTasks("")).rejects.toThrow(/userId is required/);
+    await expect(countCompletedTasks(null)).rejects.toThrow(/userId is required/);
   });
 
   it("ignores ids that aren't UUIDs when editing or deleting", async () => {
@@ -73,6 +77,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     expect(task.userId).toBe(A);
     expect(task.completed).toBe(false);
     expect(task.dueDate).toBeNull();
+    // New tasks are medium priority with no notes unless told otherwise.
+    expect(task.priority).toBe("medium");
+    expect(task.notes).toBeNull();
     expect(await listTasks(A)).toEqual([task]);
   });
 
@@ -161,6 +168,75 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     expect(await toggleTask(A, "00000000-0000-4000-8000-000000000000")).toBeNull();
   });
 
+  it("sorts by priority, then by due date within each priority", async () => {
+    await addTask(A, "Low, soon", "2026-11-20", "low");
+    await addTask(A, "High, later", "2026-12-24", "high");
+    await addTask(A, "Medium, no date");
+    await addTask(A, "High, sooner", "2026-11-25", "high");
+
+    const titles = (await listTasks(A, { sort: "priority" })).map((t) => t.title);
+    expect(titles).toEqual(["High, sooner", "High, later", "Medium, no date", "Low, soon"]);
+  });
+
+  it("refuses an unknown priority at the database level too", async () => {
+    // The CHECK constraint is the safety net behind validatePriority.
+    await expect(addTask(A, "Sneaky", null, "urgent")).rejects.toThrow();
+  });
+
+  it("saves and clears notes, and only changes the fields it's given", async () => {
+    const task = await addTask(A, "Groceries", "2026-12-01", "high");
+
+    const withNotes = await updateTask(A, task.id, { notes: "Milk\nEggs" });
+    expect(withNotes).toMatchObject({ title: "Groceries", dueDate: "2026-12-01", priority: "high", notes: "Milk\nEggs" });
+
+    expect((await updateTask(A, task.id, { notes: null })).notes).toBeNull();
+  });
+
+  it("searches titles and notes, ignoring case", async () => {
+    await addTask(A, "Buy MILK");
+    const eggs = await addTask(A, "Shopping");
+    await updateTask(A, eggs.id, { notes: "eggs and milk" });
+    await addTask(A, "Walk the dog");
+
+    const titles = async (query) => (await listTasks(A, { query })).map((t) => t.title);
+    expect(await titles("milk")).toEqual(["Buy MILK", "Shopping"]);
+    expect(await titles("DOG")).toEqual(["Walk the dog"]);
+    expect(await titles("nothing like this")).toEqual([]);
+  });
+
+  it("treats % and _ in a search as plain text", async () => {
+    await addTask(A, "Save 50% on shoes");
+    await addTask(A, "Save 500 coins");
+    await addTask(A, "my_file");
+    await addTask(A, "myxfile");
+
+    expect((await listTasks(A, { query: "50%" })).map((t) => t.title)).toEqual(["Save 50% on shoes"]);
+    expect((await listTasks(A, { query: "my_" })).map((t) => t.title)).toEqual(["my_file"]);
+  });
+
+  it("combines search with a filter", async () => {
+    const done = await addTask(A, "Milk (bought)");
+    await toggleTask(A, done.id);
+    await addTask(A, "Milk (to buy)");
+
+    expect((await listTasks(A, { filter: "done", query: "milk" })).map((t) => t.title)).toEqual([
+      "Milk (bought)",
+    ]);
+  });
+
+  it("counts and clears only finished tasks", async () => {
+    const one = await addTask(A, "Done one");
+    const two = await addTask(A, "Done two");
+    await addTask(A, "Still to do");
+    await toggleTask(A, one.id);
+    await toggleTask(A, two.id);
+
+    expect(await countCompletedTasks(A)).toBe(2);
+    expect(await deleteCompletedTasks(A)).toBe(2);
+    expect(await countCompletedTasks(A)).toBe(0);
+    expect((await listTasks(A)).map((t) => t.title)).toEqual(["Still to do"]);
+  });
+
   // --- Authorization: users are kept apart ---
 
   it("only lists the user's own tasks", async () => {
@@ -196,6 +272,21 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
 
     expect(await deleteTask(B, aTask.id)).toBe(false);
     expect(await listTasks(A)).toHaveLength(1);
+  });
+
+  it("never searches another user's tasks", async () => {
+    await addTask(B, "B's milk");
+
+    expect(await listTasks(A, { query: "milk" })).toEqual([]);
+  });
+
+  it("clearing completed never touches another user's tasks", async () => {
+    const bTask = await addTask(B, "B's finished task");
+    await toggleTask(B, bTask.id);
+
+    expect(await countCompletedTasks(A)).toBe(0);
+    expect(await deleteCompletedTasks(A)).toBe(0);
+    expect(await countCompletedTasks(B)).toBe(1);
   });
 
   it("deletes a user's tasks when the user is deleted", async () => {

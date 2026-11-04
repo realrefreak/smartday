@@ -10,6 +10,7 @@ vi.mock("next/cache", () => ({
 // action's own logic (validate, save, refresh), not of the database.
 vi.mock("@/lib/tasks", () => ({
   addTask: vi.fn(),
+  deleteCompletedTasks: vi.fn(),
   deleteTask: vi.fn(),
   toggleTask: vi.fn(),
   updateTask: vi.fn(),
@@ -22,8 +23,9 @@ vi.mock("@/lib/session", () => ({
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
-import { addTask, deleteTask, toggleTask, updateTask } from "@/lib/tasks";
+import { addTask, deleteCompletedTasks, deleteTask, toggleTask, updateTask } from "@/lib/tasks";
 import {
+  clearCompletedAction,
   createTaskAction,
   deleteTaskAction,
   toggleTaskAction,
@@ -33,15 +35,19 @@ import {
 const signedInUser = { id: "user-1", email: "a@example.com" };
 
 // Builds the same FormData a browser would send. An empty date input still
-// sends dueDate as "", so that's the default here too.
-function form(title, dueDate = "") {
+// sends dueDate as "", so that's the default here too. The add form always
+// sends a priority.
+function form(title, dueDate = "", priority = "medium") {
   const data = new FormData();
   data.set("title", title);
   data.set("dueDate", dueDate);
+  data.set("priority", priority);
   return data;
 }
 
-const initialState = { error: "", field: "", title: "", dueDate: "" };
+const initialState = { error: "", field: "", title: "", dueDate: "", priority: "medium" };
+// After a successful add, title and date are cleared; priority is kept.
+const clearedState = (priority = "medium") => ({ ...initialState, priority });
 
 describe("createTaskAction", () => {
   beforeEach(() => {
@@ -62,17 +68,32 @@ describe("createTaskAction", () => {
   it("saves a valid task, trimmed, and refreshes the page", async () => {
     const state = await createTaskAction(initialState, form("  Buy milk  "));
 
-    expect(state).toEqual(initialState);
+    expect(state).toEqual(clearedState());
     // The owner comes from the session, not the form. No date given = null.
-    expect(addTask).toHaveBeenCalledWith("user-1", "Buy milk", null);
+    expect(addTask).toHaveBeenCalledWith("user-1", "Buy milk", null, "medium");
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 
   it("saves the due date when one is given", async () => {
     const state = await createTaskAction(initialState, form("Pay rent", "2026-12-01"));
 
-    expect(state).toEqual(initialState);
-    expect(addTask).toHaveBeenCalledWith("user-1", "Pay rent", "2026-12-01");
+    expect(state).toEqual(clearedState());
+    expect(addTask).toHaveBeenCalledWith("user-1", "Pay rent", "2026-12-01", "medium");
+  });
+
+  it("saves the chosen priority and keeps it for the next task", async () => {
+    const state = await createTaskAction(initialState, form("File taxes", "", "high"));
+
+    expect(addTask).toHaveBeenCalledWith("user-1", "File taxes", null, "high");
+    expect(state).toEqual(clearedState("high"));
+  });
+
+  it("rejects a made-up priority", async () => {
+    const state = await createTaskAction(initialState, form("File taxes", "", "urgent"));
+
+    expect(state).toMatchObject({ field: "priority", priority: "urgent" });
+    expect(state.error).toMatch(/priority/);
+    expect(addTask).not.toHaveBeenCalled();
   });
 
   it("rejects an impossible due date and keeps both typed values", async () => {
@@ -83,6 +104,7 @@ describe("createTaskAction", () => {
       field: "dueDate",
       title: "Pay rent",
       dueDate: "2026-02-30",
+      priority: "medium",
     });
     expect(addTask).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
@@ -137,9 +159,10 @@ describe("toggleTaskAction", () => {
 const TASK_ID = "00000000-0000-4000-8000-000000000000";
 
 // The FormData the edit form sends.
-function editForm(title, dueDate = "") {
-  const data = form(title, dueDate);
+function editForm(title, dueDate = "", { priority = "medium", notes = "" } = {}) {
+  const data = form(title, dueDate, priority);
   data.set("id", TASK_ID);
+  data.set("notes", notes);
   return data;
 }
 
@@ -164,12 +187,17 @@ describe("updateTaskAction", () => {
   });
 
   it("saves the trimmed title and date for the signed-in user", async () => {
-    const state = await updateTaskAction(before, editForm("  New title  ", "2026-12-01"));
+    const state = await updateTaskAction(
+      before,
+      editForm("  New title  ", "2026-12-01", { priority: "low", notes: " Ask Sam\r\nfirst " }),
+    );
 
     expect(state.ok).toBe(true);
     expect(updateTask).toHaveBeenCalledWith("user-1", TASK_ID, {
       title: "New title",
       dueDate: "2026-12-01",
+      priority: "low",
+      notes: "Ask Sam\nfirst",
     });
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
@@ -177,7 +205,36 @@ describe("updateTaskAction", () => {
   it("clears the due date when the date box is emptied", async () => {
     await updateTaskAction(before, editForm("New title", ""));
 
-    expect(updateTask).toHaveBeenCalledWith("user-1", TASK_ID, { title: "New title", dueDate: null });
+    expect(updateTask).toHaveBeenCalledWith("user-1", TASK_ID, {
+      title: "New title",
+      dueDate: null,
+      priority: "medium",
+      notes: null,
+    });
+  });
+
+  it("leaves priority and notes alone when an older form doesn't send them", async () => {
+    // A page opened before priorities existed only sends id, title and date.
+    const data = new FormData();
+    data.set("id", TASK_ID);
+    data.set("title", "New title");
+    data.set("dueDate", "");
+
+    await updateTaskAction(before, data);
+
+    expect(updateTask).toHaveBeenCalledWith("user-1", TASK_ID, {
+      title: "New title",
+      dueDate: null,
+      priority: undefined,
+      notes: undefined,
+    });
+  });
+
+  it("rejects notes that are too long", async () => {
+    const state = await updateTaskAction(before, editForm("New", "", { notes: "a".repeat(1001) }));
+
+    expect(state).toMatchObject({ ok: false, field: "notes" });
+    expect(updateTask).not.toHaveBeenCalled();
   });
 
   it("uses the same validation as adding a task", async () => {
@@ -225,6 +282,29 @@ describe("deleteTaskAction", () => {
     await deleteTaskAction(data);
 
     expect(deleteTask).toHaveBeenCalledWith("user-1", TASK_ID);
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+});
+
+describe("clearCompletedAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("does nothing when nobody is signed in", async () => {
+    getCurrentUser.mockResolvedValue(null);
+
+    await clearCompletedAction();
+
+    expect(deleteCompletedTasks).not.toHaveBeenCalled();
+  });
+
+  it("clears only the signed-in user's finished tasks", async () => {
+    getCurrentUser.mockResolvedValue(signedInUser);
+
+    await clearCompletedAction();
+
+    expect(deleteCompletedTasks).toHaveBeenCalledWith("user-1");
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 });

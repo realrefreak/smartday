@@ -9,8 +9,19 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
-import { addTask, deleteTask, toggleTask, updateTask } from "@/lib/tasks";
-import { validateDueDate, validateTaskTitle } from "@/lib/task-validation";
+import {
+  addTask,
+  deleteCompletedTasks,
+  deleteTask,
+  toggleTask,
+  updateTask,
+} from "@/lib/tasks";
+import {
+  validateDueDate,
+  validateNotes,
+  validatePriority,
+  validateTaskTitle,
+} from "@/lib/task-validation";
 
 const SIGNED_OUT_ERROR = "Your session has ended. Please sign in again.";
 
@@ -22,12 +33,18 @@ function asText(value) {
 // Used with useActionState, so it receives the previous state first, then the form data.
 // It returns the new state:
 //   error   - message to show, or "" if it worked
-//   field   - which input the error is about ("title" or "dueDate"), for screen readers
-//   title, dueDate - what the user typed, so a mistake doesn't wipe the form
+//   field   - which input the error is about ("title", "dueDate" or
+//             "priority"), for screen readers
+//   title, dueDate, priority - what the user typed, so a mistake doesn't wipe the form
 export async function createTaskAction(prevState, formData) {
   const rawTitle = formData.get("title");
   const rawDueDate = formData.get("dueDate");
-  const typed = { title: asText(rawTitle), dueDate: asText(rawDueDate) };
+  const rawPriority = formData.get("priority");
+  const typed = {
+    title: asText(rawTitle),
+    dueDate: asText(rawDueDate),
+    priority: asText(rawPriority),
+  };
 
   // The owner always comes from the session on the server, never from the form,
   // so nobody can create tasks for another user.
@@ -46,12 +63,19 @@ export async function createTaskAction(prevState, formData) {
     return { error: dueDate.error, field: "dueDate", ...typed };
   }
 
-  await addTask(user.id, title.title, dueDate.dueDate);
+  const priority = validatePriority(rawPriority);
+  if (!priority.ok) {
+    return { error: priority.error, field: "priority", ...typed };
+  }
+
+  await addTask(user.id, title.title, dueDate.dueDate, priority.priority);
 
   // Tell Next the /tasks page is out of date, so the response shows the new task.
   revalidatePath("/tasks");
 
-  return { error: "", field: "", title: "", dueDate: "" };
+  // Clear the title and date for the next task, but keep the priority:
+  // people often add several tasks of the same priority in a row.
+  return { error: "", field: "", title: "", dueDate: "", priority: typed.priority };
 }
 
 export async function toggleTaskAction(formData) {
@@ -77,7 +101,14 @@ export async function updateTaskAction(prevState, formData) {
   const id = asText(formData.get("id"));
   const rawTitle = formData.get("title");
   const rawDueDate = formData.get("dueDate");
-  const typed = { title: asText(rawTitle), dueDate: asText(rawDueDate) };
+  const rawPriority = formData.get("priority");
+  const rawNotes = formData.get("notes");
+  const typed = {
+    title: asText(rawTitle),
+    dueDate: asText(rawDueDate),
+    priority: asText(rawPriority),
+    notes: asText(rawNotes),
+  };
 
   const user = await getCurrentUser();
   if (!user) {
@@ -94,11 +125,26 @@ export async function updateTaskAction(prevState, formData) {
     return { ok: false, error: dueDate.error, field: "dueDate", ...typed };
   }
 
+  const priority = validatePriority(rawPriority);
+  if (!priority.ok) {
+    return { ok: false, error: priority.error, field: "priority", ...typed };
+  }
+
+  const notes = validateNotes(rawNotes);
+  if (!notes.ok) {
+    return { ok: false, error: notes.error, field: "notes", ...typed };
+  }
+
   // updateTask only matches tasks owned by this user. null means the task was
   // deleted (e.g. in another tab) or the id was forged.
   const task = await updateTask(user.id, id, {
     title: title.title,
     dueDate: dueDate.dueDate,
+    // A form that doesn't send these at all (e.g. a page opened before this
+    // version was deployed) leaves them unchanged: undefined = don't touch.
+    // A sent-but-empty notes box does clear the notes.
+    priority: rawPriority === null ? undefined : priority.priority,
+    notes: rawNotes === null ? undefined : notes.notes,
   });
   if (!task) {
     return { ok: false, error: "This task no longer exists. Reload the page.", field: "", ...typed };
@@ -116,5 +162,17 @@ export async function deleteTaskAction(formData) {
 
   // Like toggling: only matches this user's own task.
   await deleteTask(user.id, String(formData.get("id") ?? ""));
+  revalidatePath("/tasks");
+}
+
+// Deletes all of the signed-in user's finished tasks. Takes no input: it can
+// only ever act on the caller's own tasks.
+export async function clearCompletedAction() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return;
+  }
+
+  await deleteCompletedTasks(user.id);
   revalidatePath("/tasks");
 }

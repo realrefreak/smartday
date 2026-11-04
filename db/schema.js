@@ -2,8 +2,14 @@
 // drizzle-kit reads this file to generate SQL migrations, and our code imports
 // it to build type-safe queries.
 
-import { boolean, date, index, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
-import { TITLE_MAX_LENGTH } from "../lib/task-validation.js";
+import { sql } from "drizzle-orm";
+import { boolean, check, date, index, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  DEFAULT_PRIORITY,
+  NOTES_MAX_LENGTH,
+  PRIORITIES,
+  TITLE_MAX_LENGTH,
+} from "../lib/task-validation.js";
 import { user } from "./auth-schema.js";
 
 // Better Auth's tables (user, session, account, verification). That file is
@@ -34,9 +40,26 @@ export const tasks = pgTable(
     // bring time zones back in. Nullable: tasks without a date are fine.
     dueDate: date("due_date", { mode: "string" }),
 
+    // "high", "medium" or "low". NOT NULL with a default, so adding this column
+    // is safe: every existing task becomes "medium", and code that doesn't
+    // know about priorities yet can still insert tasks.
+    priority: text("priority").notNull().default(DEFAULT_PRIORITY),
+
+    // Optional longer text. Nullable, so existing tasks simply have none.
+    notes: varchar("notes", { length: NOTES_MAX_LENGTH }),
+
     // "created_at" in SQL, createdAt in JavaScript. Stored with time zone.
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  // Every query filters by user_id, so an index keeps that fast as tasks grow.
-  (table) => [index("tasks_user_id_idx").on(table.userId)],
+  (table) => [
+    // Every query filters by user_id, so an index keeps that fast as tasks grow.
+    index("tasks_user_id_idx").on(table.userId),
+
+    // A CHECK constraint: the database itself refuses any other priority,
+    // a second safety net behind validatePriority.
+    check(
+      "tasks_priority_check",
+      sql.raw(`priority in (${PRIORITIES.map((p) => `'${p.value}'`).join(", ")})`),
+    ),
+  ],
 );
