@@ -52,7 +52,14 @@ export default async function RootLayout({ children }) {
             <div className="ml-auto flex items-center gap-4 text-sm">
               {user ? (
                 <>
-                  <span className="text-zinc-600 dark:text-zinc-400">{user.email}</span>
+                  {/* Your email doubles as the link to your Account page. */}
+                  <Link
+                    href="/account"
+                    title="Account settings"
+                    className="text-zinc-600 hover:underline dark:text-zinc-400"
+                  >
+                    {user.email}
+                  </Link>
                   <form action={signOutAction}>
                     <button type="submit" className="hover:underline">
                       Sign out

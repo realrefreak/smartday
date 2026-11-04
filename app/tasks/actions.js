@@ -20,6 +20,7 @@ import {
   validateDueDate,
   validateNotes,
   validatePriority,
+  validateRepeat,
   validateTaskTitle,
 } from "@/lib/task-validation";
 
@@ -33,17 +34,20 @@ function asText(value) {
 // Used with useActionState, so it receives the previous state first, then the form data.
 // It returns the new state:
 //   error   - message to show, or "" if it worked
-//   field   - which input the error is about ("title", "dueDate" or
-//             "priority"), for screen readers
-//   title, dueDate, priority - what the user typed, so a mistake doesn't wipe the form
+//   field   - which input the error is about ("title", "dueDate",
+//             "priority" or "repeat"), for screen readers
+//   title, dueDate, priority, repeat - what the user typed, so a mistake
+//             doesn't wipe the form
 export async function createTaskAction(prevState, formData) {
   const rawTitle = formData.get("title");
   const rawDueDate = formData.get("dueDate");
   const rawPriority = formData.get("priority");
+  const rawRepeat = formData.get("repeat");
   const typed = {
     title: asText(rawTitle),
     dueDate: asText(rawDueDate),
     priority: asText(rawPriority),
+    repeat: asText(rawRepeat),
   };
 
   // The owner always comes from the session on the server, never from the form,
@@ -68,14 +72,19 @@ export async function createTaskAction(prevState, formData) {
     return { error: priority.error, field: "priority", ...typed };
   }
 
-  await addTask(user.id, title.title, dueDate.dueDate, priority.priority);
+  const repeat = validateRepeat(rawRepeat, dueDate.dueDate);
+  if (!repeat.ok) {
+    return { error: repeat.error, field: "repeat", ...typed };
+  }
+
+  await addTask(user.id, title.title, dueDate.dueDate, priority.priority, repeat.repeat);
 
   // Tell Next the /tasks page is out of date, so the response shows the new task.
   revalidatePath("/tasks");
 
-  // Clear the title and date for the next task, but keep the priority:
-  // people often add several tasks of the same priority in a row.
-  return { error: "", field: "", title: "", dueDate: "", priority: typed.priority };
+  // Clear the form for the next task, but keep the priority: people often add
+  // several tasks of the same priority in a row.
+  return { error: "", field: "", title: "", dueDate: "", priority: typed.priority, repeat: "" };
 }
 
 export async function toggleTaskAction(formData) {
@@ -103,11 +112,13 @@ export async function updateTaskAction(prevState, formData) {
   const rawDueDate = formData.get("dueDate");
   const rawPriority = formData.get("priority");
   const rawNotes = formData.get("notes");
+  const rawRepeat = formData.get("repeat");
   const typed = {
     title: asText(rawTitle),
     dueDate: asText(rawDueDate),
     priority: asText(rawPriority),
     notes: asText(rawNotes),
+    repeat: asText(rawRepeat),
   };
 
   const user = await getCurrentUser();
@@ -135,6 +146,11 @@ export async function updateTaskAction(prevState, formData) {
     return { ok: false, error: notes.error, field: "notes", ...typed };
   }
 
+  const repeat = validateRepeat(rawRepeat, dueDate.dueDate);
+  if (!repeat.ok) {
+    return { ok: false, error: repeat.error, field: "repeat", ...typed };
+  }
+
   // updateTask only matches tasks owned by this user. null means the task was
   // deleted (e.g. in another tab) or the id was forged.
   const task = await updateTask(user.id, id, {
@@ -145,6 +161,9 @@ export async function updateTaskAction(prevState, formData) {
     // A sent-but-empty notes box does clear the notes.
     priority: rawPriority === null ? undefined : priority.priority,
     notes: rawNotes === null ? undefined : notes.notes,
+    // Same for repeat, with one exception: removing the due date also stops a
+    // task repeating, since a repeating task must have a date.
+    repeat: rawRepeat !== null ? repeat.repeat : dueDate.dueDate === null ? null : undefined,
   });
   if (!task) {
     return { ok: false, error: "This task no longer exists. Reload the page.", field: "", ...typed };

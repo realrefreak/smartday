@@ -7,6 +7,7 @@
 
 import { useSyncExternalStore } from "react";
 import { dueDateStatus, formatDueDate, toLocalDateString } from "@/lib/due-date";
+import { REPEATS } from "@/lib/task-validation";
 
 // useSyncExternalStore reads a value from outside React (here: the clock).
 // It takes three functions:
@@ -35,7 +36,7 @@ const labels = {
   today: { text: "Today", className: "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300" },
 };
 
-export default function DueDate({ dueDate, completed }) {
+export default function DueDate({ dueDate, repeat, completed }) {
   const today = useSyncExternalStore(subscribe, getToday, getServerToday);
 
   // No label until we know today's date, and never for finished tasks.
@@ -46,6 +47,7 @@ export default function DueDate({ dueDate, completed }) {
       {/* <time dateTime> gives the exact date to machines (screen readers,
           search engines) alongside the friendly text. */}
       Due <time dateTime={dueDate}>{formatDueDate(dueDate)}</time>
+      {repeat && <> · Repeats {REPEATS.find((r) => r.value === repeat)?.label.toLowerCase()}</>}
       {label && (
         <span className={`ml-2 rounded px-1.5 py-0.5 text-xs font-medium ${label.className}`}>
           {label.text}

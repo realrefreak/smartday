@@ -8,9 +8,10 @@ import {
   parseTaskSort,
   tasksHref,
 } from "@/lib/task-filter";
-import { countCompletedTasks, listTasks } from "@/lib/tasks";
+import { getTaskCounts, listTasks } from "@/lib/tasks";
 import AddTaskForm from "./AddTaskForm";
 import ClearCompletedButton from "./ClearCompletedButton";
+import TaskProgress from "./TaskProgress";
 import TaskItem from "./TaskItem";
 import TaskSearch from "./TaskSearch";
 
@@ -68,16 +69,27 @@ export default async function TasksPage({ searchParams }) {
 
   // Two independent queries, so run them at the same time. Both only ever
   // see this user's tasks.
-  const [tasks, completedCount] = await Promise.all([
+  const [tasks, counts] = await Promise.all([
     listTasks(user.id, { filter, sort, query }),
-    countCompletedTasks(user.id),
+    getTaskCounts(user.id),
   ]);
 
   const emptyMessage = query ? `No tasks match "${query}".` : EMPTY_MESSAGES[filter];
 
   return (
     <section className="space-y-6">
-      <h1 className="text-3xl font-semibold">Tasks</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h1 className="text-3xl font-semibold">Tasks</h1>
+        {/* A plain <a>, not <Link>: this downloads a file from a Route
+            Handler rather than showing another page. */}
+        {counts.total > 0 && (
+          <a href="/api/tasks/export" className="text-sm hover:underline">
+            Export CSV
+          </a>
+        )}
+      </div>
+
+      <TaskProgress total={counts.total} completed={counts.completed} />
 
       {/* Client Component: shows validation errors and "Adding…" while saving. */}
       <AddTaskForm />
@@ -117,6 +129,7 @@ export default async function TasksPage({ searchParams }) {
               dueDate={task.dueDate}
               priority={task.priority}
               notes={task.notes}
+              repeat={task.repeat}
               completed={task.completed}
             />
           ))}
@@ -125,9 +138,9 @@ export default async function TasksPage({ searchParams }) {
 
       {/* Counts every finished task, not just the ones on screen, because
           that's what the button deletes. */}
-      {completedCount > 0 && (
+      {counts.completed > 0 && (
         <div className="flex justify-end">
-          <ClearCompletedButton count={completedCount} />
+          <ClearCompletedButton count={counts.completed} />
         </div>
       )}
     </section>
