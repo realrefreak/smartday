@@ -6,9 +6,10 @@ import { NOTES_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/lib/task-validation";
 import { updateTaskAction } from "./actions";
 import { fieldErrorProps } from "./field-error-props";
 import PrioritySelect from "./PrioritySelect";
+import RepeatSelect from "./RepeatSelect";
 import { inputClass } from "./styles";
 
-export default function EditTaskForm({ id, title, dueDate, priority, notes, onDone }) {
+export default function EditTaskForm({ id, title, dueDate, priority, notes, repeat, onDone }) {
   // Every row could show this form, so ids must be unique on the page.
   const fieldId = useId();
   const errorId = `${fieldId}-error`;
@@ -23,7 +24,7 @@ export default function EditTaskForm({ id, title, dueDate, priority, notes, onDo
       }
       return result;
     },
-    { ok: false, error: "", field: "", title, dueDate: dueDate ?? "", priority, notes: notes ?? "" },
+    { ok: false, error: "", field: "", title, dueDate: dueDate ?? "", priority, notes: notes ?? "", repeat: repeat ?? "" },
   );
 
   const errorProps = (field) => fieldErrorProps(state, field, errorId);
@@ -67,10 +68,19 @@ export default function EditTaskForm({ id, title, dueDate, priority, notes, onDo
           className={inputClass}
         />
 
+        {/* key: see AddTaskForm. Keeps your choices after a failed save. */}
         <PrioritySelect
+          key={`priority-${state.priority}`}
           id={`${fieldId}-priority`}
           defaultValue={state.priority}
           {...errorProps("priority")}
+        />
+
+        <RepeatSelect
+          key={`repeat-${state.repeat}`}
+          id={`${fieldId}-repeat`}
+          defaultValue={state.repeat}
+          {...errorProps("repeat")}
         />
       </div>
 

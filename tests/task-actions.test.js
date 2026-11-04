@@ -45,7 +45,7 @@ function form(title, dueDate = "", priority = "medium") {
   return data;
 }
 
-const initialState = { error: "", field: "", title: "", dueDate: "", priority: "medium" };
+const initialState = { error: "", field: "", title: "", dueDate: "", priority: "medium", repeat: "" };
 // After a successful add, title and date are cleared; priority is kept.
 const clearedState = (priority = "medium") => ({ ...initialState, priority });
 
@@ -70,7 +70,7 @@ describe("createTaskAction", () => {
 
     expect(state).toEqual(clearedState());
     // The owner comes from the session, not the form. No date given = null.
-    expect(addTask).toHaveBeenCalledWith("user-1", "Buy milk", null, "medium");
+    expect(addTask).toHaveBeenCalledWith("user-1", "Buy milk", null, "medium", null);
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 
@@ -78,14 +78,33 @@ describe("createTaskAction", () => {
     const state = await createTaskAction(initialState, form("Pay rent", "2026-12-01"));
 
     expect(state).toEqual(clearedState());
-    expect(addTask).toHaveBeenCalledWith("user-1", "Pay rent", "2026-12-01", "medium");
+    expect(addTask).toHaveBeenCalledWith("user-1", "Pay rent", "2026-12-01", "medium", null);
   });
 
   it("saves the chosen priority and keeps it for the next task", async () => {
     const state = await createTaskAction(initialState, form("File taxes", "", "high"));
 
-    expect(addTask).toHaveBeenCalledWith("user-1", "File taxes", null, "high");
+    expect(addTask).toHaveBeenCalledWith("user-1", "File taxes", null, "high", null);
     expect(state).toEqual(clearedState("high"));
+  });
+
+  it("saves a repeating task", async () => {
+    const data = form("Water plants", "2026-12-01");
+    data.set("repeat", "weekly");
+
+    await createTaskAction(initialState, data);
+
+    expect(addTask).toHaveBeenCalledWith("user-1", "Water plants", "2026-12-01", "medium", "weekly");
+  });
+
+  it("refuses a repeating task without a due date", async () => {
+    const data = form("Water plants");
+    data.set("repeat", "weekly");
+
+    const state = await createTaskAction(initialState, data);
+
+    expect(state).toMatchObject({ field: "repeat", error: "A repeating task needs a due date." });
+    expect(addTask).not.toHaveBeenCalled();
   });
 
   it("rejects a made-up priority", async () => {
@@ -105,6 +124,7 @@ describe("createTaskAction", () => {
       title: "Pay rent",
       dueDate: "2026-02-30",
       priority: "medium",
+      repeat: "",
     });
     expect(addTask).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
@@ -159,10 +179,11 @@ describe("toggleTaskAction", () => {
 const TASK_ID = "00000000-0000-4000-8000-000000000000";
 
 // The FormData the edit form sends.
-function editForm(title, dueDate = "", { priority = "medium", notes = "" } = {}) {
+function editForm(title, dueDate = "", { priority = "medium", notes = "", repeat = "" } = {}) {
   const data = form(title, dueDate, priority);
   data.set("id", TASK_ID);
   data.set("notes", notes);
+  data.set("repeat", repeat);
   return data;
 }
 
@@ -198,6 +219,7 @@ describe("updateTaskAction", () => {
       dueDate: "2026-12-01",
       priority: "low",
       notes: "Ask Sam\nfirst",
+      repeat: null,
     });
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
@@ -210,7 +232,21 @@ describe("updateTaskAction", () => {
       dueDate: null,
       priority: "medium",
       notes: null,
+      repeat: null,
     });
+  });
+
+  it("saves a new repeat setting", async () => {
+    await updateTaskAction(before, editForm("Gym", "2026-12-01", { repeat: "daily" }));
+
+    expect(updateTask).toHaveBeenCalledWith("user-1", TASK_ID, expect.objectContaining({ repeat: "daily" }));
+  });
+
+  it("refuses to repeat a task without a due date", async () => {
+    const state = await updateTaskAction(before, editForm("Gym", "", { repeat: "daily" }));
+
+    expect(state).toMatchObject({ ok: false, field: "repeat" });
+    expect(updateTask).not.toHaveBeenCalled();
   });
 
   it("leaves priority and notes alone when an older form doesn't send them", async () => {
@@ -227,7 +263,21 @@ describe("updateTaskAction", () => {
       dueDate: null,
       priority: undefined,
       notes: undefined,
+      // The date was removed, so the task can't keep repeating.
+      repeat: null,
     });
+  });
+
+  it("leaves repeat alone when an older form keeps the due date", async () => {
+    const data = new FormData();
+    data.set("id", TASK_ID);
+    data.set("title", "New title");
+    data.set("dueDate", "2026-12-01");
+
+    await updateTaskAction(before, data);
+
+    expect(updateTask.mock.calls[0][2]).toMatchObject({ dueDate: "2026-12-01" });
+    expect(updateTask.mock.calls[0][2].repeat).toBeUndefined();
   });
 
   it("rejects notes that are too long", async () => {

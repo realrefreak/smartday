@@ -17,7 +17,7 @@ const priorityBadges = {
   low: { text: "Low priority", className: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" },
 };
 
-export default function TaskItem({ id, title, dueDate, priority, notes, completed }) {
+export default function TaskItem({ id, title, dueDate, priority, notes, repeat, completed }) {
   const [editing, setEditing] = useState(false);
   const badge = priorityBadges[priority];
 
@@ -30,6 +30,7 @@ export default function TaskItem({ id, title, dueDate, priority, notes, complete
           dueDate={dueDate}
           priority={priority}
           notes={notes}
+          repeat={repeat}
           onDone={() => setEditing(false)}
         />
       </li>
@@ -49,7 +50,7 @@ export default function TaskItem({ id, title, dueDate, priority, notes, complete
         )}
 
         {/* Adds "Overdue"/"Today" using the browser's own date. */}
-        {dueDate && <DueDate dueDate={dueDate} completed={completed} />}
+        {dueDate && <DueDate dueDate={dueDate} repeat={repeat} completed={completed} />}
 
         {/* <details> opens and closes by itself, with no JavaScript, and
             screen readers announce it as expandable. whitespace-pre-wrap keeps

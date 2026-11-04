@@ -8,6 +8,7 @@ import {
   DEFAULT_PRIORITY,
   NOTES_MAX_LENGTH,
   PRIORITIES,
+  REPEATS,
   TITLE_MAX_LENGTH,
 } from "../lib/task-validation.js";
 import { user } from "./auth-schema.js";
@@ -48,6 +49,10 @@ export const tasks = pgTable(
     // Optional longer text. Nullable, so existing tasks simply have none.
     notes: varchar("notes", { length: NOTES_MAX_LENGTH }),
 
+    // "daily", "weekly" or "monthly", or null for a one-off task. When a
+    // repeating task is marked done, its due date moves forward instead.
+    repeat: text("repeat"),
+
     // "created_at" in SQL, createdAt in JavaScript. Stored with time zone.
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -61,5 +66,11 @@ export const tasks = pgTable(
       "tasks_priority_check",
       sql.raw(`priority in (${PRIORITIES.map((p) => `'${p.value}'`).join(", ")})`),
     ),
+    check(
+      "tasks_repeat_check",
+      sql.raw(`repeat in (${REPEATS.map((r) => `'${r.value}'`).join(", ")})`),
+    ),
+    // A repeating task must have a due date to move forward from.
+    check("tasks_repeat_needs_due_date_check", sql`${table.repeat} is null or ${table.dueDate} is not null`),
   ],
 );

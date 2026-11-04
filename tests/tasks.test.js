@@ -5,7 +5,7 @@ import { user } from "@/db/schema";
 import {
   addTask,
   clearTasks,
-  countCompletedTasks,
+  getTaskCounts,
   deleteCompletedTasks,
   deleteTask,
   listTasks,
@@ -29,7 +29,7 @@ describe("task store safety checks", () => {
     );
     await expect(deleteTask(undefined, "x")).rejects.toThrow(/userId is required/);
     await expect(deleteCompletedTasks("")).rejects.toThrow(/userId is required/);
-    await expect(countCompletedTasks(null)).rejects.toThrow(/userId is required/);
+    await expect(getTaskCounts(null)).rejects.toThrow(/userId is required/);
   });
 
   it("ignores ids that aren't UUIDs when editing or deleting", async () => {
@@ -231,10 +231,54 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     await toggleTask(A, one.id);
     await toggleTask(A, two.id);
 
-    expect(await countCompletedTasks(A)).toBe(2);
+    expect(await getTaskCounts(A)).toEqual({ total: 3, completed: 2 });
     expect(await deleteCompletedTasks(A)).toBe(2);
-    expect(await countCompletedTasks(A)).toBe(0);
+    expect(await getTaskCounts(A)).toEqual({ total: 1, completed: 0 });
     expect((await listTasks(A)).map((t) => t.title)).toEqual(["Still to do"]);
+  });
+
+  it("starts with no repeat", async () => {
+    expect((await addTask(A, "One-off")).repeat).toBeNull();
+  });
+
+  it("moves a repeating task's due date forward instead of finishing it", async () => {
+    const daily = await addTask(A, "Stretch", "2026-11-30", "medium", "daily");
+    const weekly = await addTask(A, "Bins", "2026-12-28", "medium", "weekly");
+
+    // Daily: 30 Nov -> 1 Dec (across a month end).
+    const nextDay = await toggleTask(A, daily.id);
+    expect(nextDay).toMatchObject({ completed: false, dueDate: "2026-12-01" });
+
+    // Weekly: 28 Dec 2026 -> 4 Jan 2027 (across a year end).
+    expect(await toggleTask(A, weekly.id)).toMatchObject({ completed: false, dueDate: "2027-01-04" });
+  });
+
+  it("keeps monthly tasks inside short months", async () => {
+    const rent = await addTask(A, "Rent", "2027-01-31", "medium", "monthly");
+
+    // 31 Jan -> 28 Feb (2027 isn't a leap year), not 3 March.
+    expect((await toggleTask(A, rent.id)).dueDate).toBe("2027-02-28");
+  });
+
+  it("toggles a one-off task normally, leaving its date alone", async () => {
+    const task = await addTask(A, "Dentist", "2026-12-01");
+
+    expect(await toggleTask(A, task.id)).toMatchObject({ completed: true, dueDate: "2026-12-01" });
+  });
+
+  it("refuses a repeating task without a due date at the database level", async () => {
+    await expect(addTask(A, "Sneaky", null, "medium", "weekly")).rejects.toThrow();
+    await expect(addTask(A, "Sneaky", "2026-12-01", "medium", "yearly")).rejects.toThrow();
+  });
+
+  it("counts all tasks and finished ones in one go", async () => {
+    expect(await getTaskCounts(A)).toEqual({ total: 0, completed: 0 });
+
+    const done = await addTask(A, "Done");
+    await addTask(A, "Not done");
+    await toggleTask(A, done.id);
+
+    expect(await getTaskCounts(A)).toEqual({ total: 2, completed: 1 });
   });
 
   // --- Authorization: users are kept apart ---
@@ -284,9 +328,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     const bTask = await addTask(B, "B's finished task");
     await toggleTask(B, bTask.id);
 
-    expect(await countCompletedTasks(A)).toBe(0);
+    expect(await getTaskCounts(A)).toEqual({ total: 0, completed: 0 });
     expect(await deleteCompletedTasks(A)).toBe(0);
-    expect(await countCompletedTasks(B)).toBe(1);
+    expect(await getTaskCounts(B)).toEqual({ total: 1, completed: 1 });
   });
 
   it("deletes a user's tasks when the user is deleted", async () => {

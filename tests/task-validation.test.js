@@ -5,6 +5,7 @@ import {
   validateDueDate,
   validateNotes,
   validatePriority,
+  validateRepeat,
   validateTaskTitle,
 } from "@/lib/task-validation";
 import { dueDateStatus, formatDueDate, toLocalDateString } from "@/lib/due-date";
@@ -164,5 +165,30 @@ describe("validateNotes", () => {
   it(`rejects notes longer than ${NOTES_MAX_LENGTH} characters`, () => {
     expect(validateNotes("a".repeat(NOTES_MAX_LENGTH)).ok).toBe(true);
     expect(validateNotes("a".repeat(NOTES_MAX_LENGTH + 1)).ok).toBe(false);
+  });
+});
+
+describe("validateRepeat", () => {
+  it("accepts daily, weekly and monthly when there's a due date", () => {
+    expect(validateRepeat("daily", "2026-12-01")).toEqual({ ok: true, repeat: "daily" });
+    expect(validateRepeat("weekly", "2026-12-01")).toEqual({ ok: true, repeat: "weekly" });
+    expect(validateRepeat("monthly", "2026-12-01")).toEqual({ ok: true, repeat: "monthly" });
+  });
+
+  it("means a one-off task when empty or not sent", () => {
+    expect(validateRepeat("", null)).toEqual({ ok: true, repeat: null });
+    expect(validateRepeat(null, "2026-12-01")).toEqual({ ok: true, repeat: null });
+  });
+
+  it("needs a due date to repeat", () => {
+    expect(validateRepeat("weekly", null)).toEqual({
+      ok: false,
+      error: "A repeating task needs a due date.",
+    });
+  });
+
+  it("rejects anything else", () => {
+    expect(validateRepeat("yearly", "2026-12-01").ok).toBe(false);
+    expect(validateRepeat(new File([], "x"), "2026-12-01").ok).toBe(false);
   });
 });

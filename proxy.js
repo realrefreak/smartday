@@ -18,6 +18,6 @@ export function proxy(request) {
 }
 
 export const config = {
-  // Pages that require login. ":path*" also covers anything under /tasks/.
-  matcher: ["/tasks/:path*"],
+  // Pages that require login. ":path*" also covers anything under them.
+  matcher: ["/tasks/:path*", "/account/:path*"],
 };

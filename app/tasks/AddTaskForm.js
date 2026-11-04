@@ -6,10 +6,11 @@ import { useActionState } from "react";
 import { createTaskAction } from "./actions";
 import { DEFAULT_PRIORITY, TITLE_MAX_LENGTH } from "@/lib/task-validation";
 import PrioritySelect from "./PrioritySelect";
+import RepeatSelect from "./RepeatSelect";
 import { fieldErrorProps } from "./field-error-props";
 import { inputClass } from "./styles";
 
-const initialState = { error: "", field: "", title: "", dueDate: "", priority: DEFAULT_PRIORITY };
+const initialState = { error: "", field: "", title: "", dueDate: "", priority: DEFAULT_PRIORITY, repeat: "" };
 
 export default function AddTaskForm() {
   // state   = whatever createTaskAction returned last time
@@ -49,10 +50,22 @@ export default function AddTaskForm() {
           className={inputClass}
         />
 
+        {/* key: React only applies a <select>'s defaultValue when it's first
+            created, and resetting the form after each submit goes back to
+            that. A new key makes a fresh select whenever the value to show
+            changes, e.g. after an error, so your choice isn't lost. */}
         <PrioritySelect
+          key={`priority-${state.priority}`}
           id="priority"
           defaultValue={state.priority}
           {...errorProps("priority")}
+        />
+
+        <RepeatSelect
+          key={`repeat-${state.repeat}`}
+          id="repeat"
+          defaultValue={state.repeat}
+          {...errorProps("repeat")}
         />
 
         <button
