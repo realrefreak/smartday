@@ -11,6 +11,9 @@ export default function AboutPage() {
         SmartDay is a daily task planner, built step by step as a
         production-style Next.js app.
       </p>
+      <p className="text-zinc-600 dark:text-zinc-400">
+        (Preview test: if you can read this, you're on a pull request preview.)
+      </p>
     </section>
   );
 }
