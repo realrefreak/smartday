@@ -8,7 +8,9 @@ import {
   getTaskCounts,
   deleteCompletedTasks,
   deleteTask,
+  duplicateTask,
   listTasks,
+  restoreTask,
   toggleTask,
   updateTask,
 } from "@/lib/tasks";
@@ -34,7 +36,7 @@ describe("task store safety checks", () => {
 
   it("ignores ids that aren't UUIDs when editing or deleting", async () => {
     expect(await updateTask("user-a", "nope", { title: "t", dueDate: null })).toBeNull();
-    expect(await deleteTask("user-a", "nope")).toBe(false);
+    expect(await deleteTask("user-a", "nope")).toBeNull();
   });
 
   it("refuses to clear tasks outside of tests", async () => {
@@ -158,10 +160,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     const keep = await addTask(A, "Keep me");
     const remove = await addTask(A, "Delete me");
 
-    expect(await deleteTask(A, remove.id)).toBe(true);
+    // It hands back what was deleted, for "Undo".
+    expect(await deleteTask(A, remove.id)).toEqual(remove);
     expect(await listTasks(A)).toEqual([keep]);
     // Deleting again finds nothing.
-    expect(await deleteTask(A, remove.id)).toBe(false);
+    expect(await deleteTask(A, remove.id)).toBeNull();
   });
 
   it("returns null when toggling a valid but unknown id", async () => {
@@ -314,8 +317,59 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
   it("does not let one user delete another user's task", async () => {
     const aTask = await addTask(A, "A's task");
 
-    expect(await deleteTask(B, aTask.id)).toBe(false);
+    expect(await deleteTask(B, aTask.id)).toBeNull();
     expect(await listTasks(A)).toHaveLength(1);
+  });
+
+  it("does not let one user copy another user's task", async () => {
+    const aTask = await addTask(A, "A's secret");
+
+    expect(await duplicateTask(B, aTask.id)).toBeNull();
+    expect(await listTasks(B)).toEqual([]);
+    expect(await listTasks(A)).toHaveLength(1);
+  });
+
+  it("restores a deleted task with all its details", async () => {
+    const task = await addTask(A, "Water plants", "2026-12-01", "high", "weekly");
+    await updateTask(A, task.id, { notes: "The big ones too" });
+    await toggleTask(A, task.id);
+    const deleted = await deleteTask(A, task.id);
+
+    const restored = await restoreTask(A, deleted);
+
+    expect(restored).toMatchObject({
+      userId: A,
+      title: "Water plants",
+      dueDate: deleted.dueDate,
+      priority: "high",
+      notes: "The big ones too",
+      repeat: "weekly",
+      completed: false,
+    });
+    expect(await listTasks(A)).toEqual([restored]);
+  });
+
+  it("duplicates a task as a new, unfinished copy", async () => {
+    const task = await addTask(A, "Pack bags", "2026-12-20", "low");
+    await updateTask(A, task.id, { notes: "Passport!" });
+    await toggleTask(A, task.id);
+
+    const copy = await duplicateTask(A, task.id);
+
+    expect(copy.id).not.toBe(task.id);
+    expect(copy).toMatchObject({
+      title: "Pack bags",
+      dueDate: "2026-12-20",
+      priority: "low",
+      notes: "Passport!",
+      completed: false,
+    });
+    expect(await listTasks(A)).toHaveLength(2);
+  });
+
+  it("returns null when duplicating an unknown or invalid id", async () => {
+    expect(await duplicateTask(A, "nope")).toBeNull();
+    expect(await duplicateTask(A, "00000000-0000-4000-8000-000000000000")).toBeNull();
   });
 
   it("never searches another user's tasks", async () => {
