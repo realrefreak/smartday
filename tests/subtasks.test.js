@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db";
-import { user } from "@/db/schema";
+import { subtasks, user } from "@/db/schema";
 import { addSubtask, deleteSubtask, listSubtasks, toggleSubtask } from "@/lib/subtasks";
 import { addTask, clearTasks, deleteTask, duplicateTask, listTasks, restoreTask } from "@/lib/tasks";
 import { SUBTASKS_MAX } from "@/lib/task-validation";
@@ -60,9 +60,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("subtask store (database)", () =
 
   it("stops at the maximum number of items", async () => {
     const task = await addTask(A, "Big job");
-    for (let i = 0; i < SUBTASKS_MAX; i++) {
-      await addSubtask(A, task.id, `Step ${i}`);
-    }
+    // Fill the checklist in one insert: 20 separate trips to the database
+    // are slow enough on CI to hit the test time limit.
+    await getDb()
+      .insert(subtasks)
+      .values(Array.from({ length: SUBTASKS_MAX }, (_, i) => ({ taskId: task.id, title: `Step ${i}` })));
 
     expect(await addSubtask(A, task.id, "One too many")).toEqual({ ok: false, reason: "full" });
     expect(await listSubtasks(A)).toHaveLength(SUBTASKS_MAX);
