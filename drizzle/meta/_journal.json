@@ -43,6 +43,13 @@
       "when": 1793805902240,
       "tag": "0005_add_task_repeat",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793821736642,
+      "tag": "0006_add_subtasks",
+      "breakpoints": true
     }
   ]
 }

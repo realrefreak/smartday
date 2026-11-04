@@ -9,6 +9,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
+import { addSubtask, deleteSubtask, toggleSubtask } from "@/lib/subtasks";
 import {
   addTask,
   deleteCompletedTasks,
@@ -19,10 +20,12 @@ import {
   updateTask,
 } from "@/lib/tasks";
 import {
+  SUBTASKS_MAX,
   validateDueDate,
   validateNotes,
   validatePriority,
   validateRepeat,
+  validateSubtaskTitle,
   validateTaskTitle,
 } from "@/lib/task-validation";
 
@@ -191,8 +194,8 @@ export async function deleteTaskAction(formData) {
   }
 
   revalidatePath("/tasks");
-  const { title, dueDate, priority, notes, repeat, completed } = deleted;
-  return { title, dueDate, priority, notes, repeat, completed };
+  const { title, dueDate, priority, notes, repeat, completed, subtasks } = deleted;
+  return { title, dueDate, priority, notes, repeat, completed, subtasks };
 }
 
 // "Undo" after deleting: puts the task back. The task comes from the browser,
@@ -212,8 +215,17 @@ export async function restoreTaskAction(task) {
   const notes = validateNotes(fields.notes);
   const repeat = dueDate.ok ? validateRepeat(fields.repeat, dueDate.dueDate) : dueDate;
   const completed = typeof fields.completed === "boolean" ? fields.completed : null;
+  const checklist = validateChecklist(fields.subtasks);
 
-  if (!title.ok || !dueDate.ok || !priority.ok || !notes.ok || !repeat.ok || completed === null) {
+  if (
+    !title.ok ||
+    !dueDate.ok ||
+    !priority.ok ||
+    !notes.ok ||
+    !repeat.ok ||
+    completed === null ||
+    checklist === null
+  ) {
     return { ok: false, error: "This task can't be restored." };
   }
 
@@ -226,10 +238,85 @@ export async function restoreTaskAction(task) {
     notes: notes.notes,
     repeat: repeat.repeat,
     completed,
+    subtasks: checklist,
   });
 
   revalidatePath("/tasks");
   return { ok: true };
+}
+
+// The checklist items sent back with "Undo": at most SUBTASKS_MAX, each with a
+// valid title and a true/false tick. Missing means none (e.g. a page opened
+// before checklists existed). Returns the cleaned list, or null if anything is
+// wrong.
+function validateChecklist(value) {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.length > SUBTASKS_MAX) {
+    return null;
+  }
+
+  const items = [];
+  for (const item of value) {
+    const title = validateSubtaskTitle(item?.title);
+    if (!title.ok || typeof item.completed !== "boolean") {
+      return null;
+    }
+    items.push({ title: title.title, completed: item.completed });
+  }
+  return items;
+}
+
+// Adds an item to a task's checklist. Used with useActionState; returns
+// { error, title } where title is what was typed (kept after an error,
+// cleared after a success so the next item can be typed straight away).
+export async function addSubtaskAction(prevState, formData) {
+  const rawTitle = formData.get("title");
+  const typed = asText(rawTitle);
+
+  const user = await getCurrentUser();
+  if (!user) {
+    return { error: SIGNED_OUT_ERROR, title: typed };
+  }
+
+  const title = validateSubtaskTitle(rawTitle);
+  if (!title.ok) {
+    return { error: title.error, title: typed };
+  }
+
+  // addSubtask checks the task is this user's, and that it isn't full.
+  const result = await addSubtask(user.id, asText(formData.get("taskId")), title.title);
+  if (!result.ok) {
+    const error =
+      result.reason === "full"
+        ? `A checklist can have at most ${SUBTASKS_MAX} items.`
+        : "This task no longer exists. Reload the page.";
+    return { error, title: typed };
+  }
+
+  revalidatePath("/tasks");
+  return { error: "", title: "" };
+}
+
+export async function toggleSubtaskAction(formData) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return;
+  }
+
+  await toggleSubtask(user.id, asText(formData.get("id")));
+  revalidatePath("/tasks");
+}
+
+export async function deleteSubtaskAction(formData) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return;
+  }
+
+  await deleteSubtask(user.id, asText(formData.get("id")));
+  revalidatePath("/tasks");
 }
 
 // Copies a task. Only the id comes from the form; the details are read from

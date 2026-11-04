@@ -16,6 +16,9 @@ export default defineConfig({
     environment: "node",
     include: ["tests/**/*.test.js"],
     globalSetup: ["./tests/global-setup.mjs"],
+    // Run test files one after another, not side by side: the database test
+    // files share one test database, and each starts by wiping it.
+    fileParallelism: false,
     env: {
       // The app code reads DATABASE_URL, so inside tests point it at the test
       // database. Empty string = no database (database tests are skipped).

@@ -1,7 +1,10 @@
 import { Geist, Geist_Mono } from "next/font/google";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/session";
+import { THEME_COOKIE, parseTheme, themeClass } from "@/lib/theme";
 import { signOutAction } from "./(auth)/actions";
+import ThemePicker from "./ThemePicker";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,11 +30,13 @@ export default async function RootLayout({ children }) {
   // Reading the session cookie means every page is now rendered per request
   // (shown as ƒ in the build), since the nav differs per visitor.
   const user = await getCurrentUser();
+  // The saved theme, so <html> gets the right class from the start.
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${themeClass(theme)} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <header className="border-b border-black/10 dark:border-white/15">
@@ -86,6 +91,12 @@ export default async function RootLayout({ children }) {
         <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
           {children}
         </main>
+
+        <footer className="border-t border-black/10 dark:border-white/15">
+          <div className="mx-auto flex max-w-3xl justify-end px-4 py-3">
+            <ThemePicker theme={theme} />
+          </div>
+        </footer>
       </body>
     </html>
   );

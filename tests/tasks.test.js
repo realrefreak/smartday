@@ -161,7 +161,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     const remove = await addTask(A, "Delete me");
 
     // It hands back what was deleted, for "Undo".
-    expect(await deleteTask(A, remove.id)).toEqual(remove);
+    expect(await deleteTask(A, remove.id)).toEqual({ ...remove, subtasks: [] });
     expect(await listTasks(A)).toEqual([keep]);
     // Deleting again finds nothing.
     expect(await deleteTask(A, remove.id)).toBeNull();

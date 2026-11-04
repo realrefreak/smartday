@@ -74,3 +74,27 @@ export const tasks = pgTable(
     check("tasks_repeat_needs_due_date_check", sql`${table.repeat} is null or ${table.dueDate} is not null`),
   ],
 );
+
+// The checklist inside a task. A new table, rather than a column on tasks,
+// because one task has many items: a "one-to-many" relationship.
+//
+// Items don't store their owner: they belong to a task, and the task belongs
+// to a user. Every query checks ownership through the task.
+export const subtasks = pgTable(
+  "subtasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // The task this item is part of. Deleting the task deletes its items
+    // (and deleting a user deletes their tasks, so their items go too).
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+
+    title: varchar("title", { length: TITLE_MAX_LENGTH }).notNull(),
+    completed: boolean("completed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Items are always looked up by their task.
+  (table) => [index("subtasks_task_id_idx").on(table.taskId)],
+);
