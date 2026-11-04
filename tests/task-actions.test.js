@@ -18,12 +18,19 @@ vi.mock("@/lib/tasks", () => ({
   updateTask: vi.fn(),
 }));
 
+vi.mock("@/lib/subtasks", () => ({
+  addSubtask: vi.fn(),
+  deleteSubtask: vi.fn(),
+  toggleSubtask: vi.fn(),
+}));
+
 // Fake "who is signed in". Each test decides by setting what it returns.
 vi.mock("@/lib/session", () => ({
   getCurrentUser: vi.fn(),
 }));
 
 import { revalidatePath } from "next/cache";
+import { addSubtask, deleteSubtask, toggleSubtask } from "@/lib/subtasks";
 import { getCurrentUser } from "@/lib/session";
 import {
   addTask,
@@ -35,7 +42,10 @@ import {
   updateTask,
 } from "@/lib/tasks";
 import {
+  addSubtaskAction,
   clearCompletedAction,
+  deleteSubtaskAction,
+  toggleSubtaskAction,
   createTaskAction,
   deleteTaskAction,
   duplicateTaskAction,
@@ -348,6 +358,7 @@ describe("deleteTaskAction", () => {
       repeat: null,
       completed: true,
       createdAt: new Date(),
+      subtasks: [{ title: "Full fat", completed: false }],
     });
     const data = new FormData();
     data.set("id", TASK_ID);
@@ -364,6 +375,7 @@ describe("deleteTaskAction", () => {
       notes: null,
       repeat: null,
       completed: true,
+      subtasks: [{ title: "Full fat", completed: false }],
     });
   });
 
@@ -403,7 +415,8 @@ describe("restoreTaskAction", () => {
   it("puts the task back for the signed-in user", async () => {
     expect(await restoreTaskAction(deleted)).toEqual({ ok: true });
 
-    expect(restoreTask).toHaveBeenCalledWith("user-1", deleted);
+    // No checklist sent (an older page): restored with none.
+    expect(restoreTask).toHaveBeenCalledWith("user-1", { ...deleted, subtasks: [] });
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 
@@ -437,7 +450,130 @@ describe("restoreTaskAction", () => {
   it("never passes on fields it did not check", async () => {
     await restoreTaskAction({ ...deleted, userId: "someone-else", id: TASK_ID });
 
-    expect(restoreTask).toHaveBeenCalledWith("user-1", deleted);
+    expect(restoreTask).toHaveBeenCalledWith("user-1", { ...deleted, subtasks: [] });
+  });
+
+  it("puts the checklist back too, cleaned up", async () => {
+    await restoreTaskAction({
+      ...deleted,
+      subtasks: [
+        { title: "  Buy soil ", completed: true, taskId: "someone-elses-task" },
+        { title: "Repot", completed: false },
+      ],
+    });
+
+    expect(restoreTask).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({
+        subtasks: [
+          { title: "Buy soil", completed: true },
+          { title: "Repot", completed: false },
+        ],
+      }),
+    );
+  });
+
+  it.each([
+    ["not a list", "Buy soil"],
+    ["an item with no title", [{ title: "", completed: false }]],
+    ["an item without a tick value", [{ title: "Repot" }]],
+    ["an item that is not an object", [null]],
+    ["too many items", Array.from({ length: 21 }, () => ({ title: "Step", completed: false }))],
+  ])("refuses a checklist that is %s", async (_, subtasks) => {
+    expect((await restoreTaskAction({ ...deleted, subtasks })).ok).toBe(false);
+    expect(restoreTask).not.toHaveBeenCalled();
+  });
+});
+
+describe("addSubtaskAction", () => {
+  const before = { error: "", title: "" };
+
+  function itemForm(title, taskId = TASK_ID) {
+    const data = new FormData();
+    data.set("taskId", taskId);
+    data.set("title", title);
+    return data;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getCurrentUser.mockResolvedValue(signedInUser);
+  });
+
+  it("refuses when nobody is signed in", async () => {
+    getCurrentUser.mockResolvedValue(null);
+
+    const state = await addSubtaskAction(before, itemForm("Step"));
+
+    expect(state.error).toMatch(/sign in/);
+    expect(addSubtask).not.toHaveBeenCalled();
+  });
+
+  it("adds a trimmed item for the signed-in user and clears the box", async () => {
+    addSubtask.mockResolvedValue({ ok: true, subtask: {} });
+
+    const state = await addSubtaskAction(before, itemForm("  Book van "));
+
+    expect(addSubtask).toHaveBeenCalledWith("user-1", TASK_ID, "Book van");
+    expect(state).toEqual({ error: "", title: "" });
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("refuses an empty item and keeps what was typed", async () => {
+    const state = await addSubtaskAction(before, itemForm("   "));
+
+    expect(state).toEqual({ error: "Please enter a checklist item.", title: "   " });
+    expect(addSubtask).not.toHaveBeenCalled();
+  });
+
+  it("explains a full checklist", async () => {
+    addSubtask.mockResolvedValue({ ok: false, reason: "full" });
+
+    const state = await addSubtaskAction(before, itemForm("One more"));
+
+    expect(state).toEqual({ error: "A checklist can have at most 20 items.", title: "One more" });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("explains a task that is gone (or not yours)", async () => {
+    addSubtask.mockResolvedValue({ ok: false, reason: "not-found" });
+
+    const state = await addSubtaskAction(before, itemForm("Step"));
+
+    expect(state.error).toMatch(/no longer exists/);
+  });
+});
+
+describe("toggleSubtaskAction and deleteSubtaskAction", () => {
+  function idForm() {
+    const data = new FormData();
+    data.set("id", TASK_ID);
+    return data;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("do nothing when nobody is signed in", async () => {
+    getCurrentUser.mockResolvedValue(null);
+
+    await toggleSubtaskAction(idForm());
+    await deleteSubtaskAction(idForm());
+
+    expect(toggleSubtask).not.toHaveBeenCalled();
+    expect(deleteSubtask).not.toHaveBeenCalled();
+  });
+
+  it("act on behalf of the signed-in user only", async () => {
+    getCurrentUser.mockResolvedValue(signedInUser);
+
+    await toggleSubtaskAction(idForm());
+    await deleteSubtaskAction(idForm());
+
+    expect(toggleSubtask).toHaveBeenCalledWith("user-1", TASK_ID);
+    expect(deleteSubtask).toHaveBeenCalledWith("user-1", TASK_ID);
+    expect(revalidatePath).toHaveBeenCalledTimes(2);
   });
 });
 

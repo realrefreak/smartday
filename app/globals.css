@@ -1,8 +1,28 @@
 @import "tailwindcss";
 
+/* Tailwind's dark: classes normally follow only the device setting. Redefine
+   "dark" so it applies when:
+     - <html> has class "dark" (the user picked Dark), or
+     - the device is in dark mode and <html> doesn't have class "light"
+       (the user picked System, or nothing yet).
+   @slot is where the styles of each dark: class go. */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not(.light), :root:not(.light) *) {
+      @slot;
+    }
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Tells the browser which colours to use for its own parts: form
+     controls, the date picker, scrollbars. */
+  color-scheme: light dark;
 }
 
 @theme inline {
@@ -12,11 +32,22 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* The same dark colours in both cases above. */
+:root.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+:root.light {
+  color-scheme: light;
 }
 
 body {

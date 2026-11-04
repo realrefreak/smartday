@@ -8,6 +8,7 @@ import {
   parseTaskSort,
   tasksHref,
 } from "@/lib/task-filter";
+import { listSubtasks } from "@/lib/subtasks";
 import { getTaskCounts, listTasks } from "@/lib/tasks";
 import AddTaskForm from "./AddTaskForm";
 import ClearCompletedButton from "./ClearCompletedButton";
@@ -69,12 +70,17 @@ export default async function TasksPage({ searchParams }) {
   const sort = parseTaskSort(params.sort);
   const query = parseSearchQuery(params.q);
 
-  // Two independent queries, so run them at the same time. Both only ever
+  // Three independent queries, so run them at the same time. All only ever
   // see this user's tasks.
-  const [tasks, counts] = await Promise.all([
+  const [tasks, counts, subtasks] = await Promise.all([
     listTasks(user.id, { filter, sort, query }),
     getTaskCounts(user.id),
+    listSubtasks(user.id),
   ]);
+
+  // Group the checklist items by task: { taskId: [item, item, ...] }.
+  // Object.groupBy is built into modern JavaScript.
+  const subtasksByTask = Object.groupBy(subtasks, (item) => item.taskId);
 
   const emptyMessage = query ? `No tasks match "${query}".` : EMPTY_MESSAGES[filter];
 
@@ -136,6 +142,7 @@ export default async function TasksPage({ searchParams }) {
                 notes={task.notes}
                 repeat={task.repeat}
                 completed={task.completed}
+                subtasks={subtasksByTask[task.id] ?? []}
               />
             ))}
           </ul>

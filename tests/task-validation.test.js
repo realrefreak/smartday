@@ -6,6 +6,7 @@ import {
   validateNotes,
   validatePriority,
   validateRepeat,
+  validateSubtaskTitle,
   validateTaskTitle,
 } from "@/lib/task-validation";
 import { dueDateStatus, formatDueDate, toLocalDateString } from "@/lib/due-date";
@@ -190,5 +191,18 @@ describe("validateRepeat", () => {
   it("rejects anything else", () => {
     expect(validateRepeat("yearly", "2026-12-01").ok).toBe(false);
     expect(validateRepeat(new File([], "x"), "2026-12-01").ok).toBe(false);
+  });
+});
+
+describe("validateSubtaskTitle", () => {
+  it("accepts and trims a short step", () => {
+    expect(validateSubtaskTitle("  Book van ")).toEqual({ ok: true, title: "Book van" });
+  });
+
+  it("uses messages about checklist items", () => {
+    expect(validateSubtaskTitle("   ").error).toBe("Please enter a checklist item.");
+    expect(validateSubtaskTitle(null).error).toBe("Please enter a checklist item.");
+    expect(validateSubtaskTitle("x".repeat(101)).error).toBe("Checklist items must be 100 characters or fewer.");
+    expect(validateSubtaskTitle("a\u0000b").error).toBe("Checklist item contains invalid characters.");
   });
 });

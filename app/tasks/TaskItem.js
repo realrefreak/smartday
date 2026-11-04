@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { deleteTaskAction, duplicateTaskAction, toggleTaskAction } from "./actions";
+import Checklist from "./Checklist";
 import DueDate from "./DueDate";
 import EditTaskForm from "./EditTaskForm";
 import { useUndoDelete } from "./UndoDelete";
@@ -18,7 +19,7 @@ const priorityBadges = {
   low: { text: "Low priority", className: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" },
 };
 
-export default function TaskItem({ id, title, dueDate, priority, notes, repeat, completed }) {
+export default function TaskItem({ id, title, dueDate, priority, notes, repeat, completed, subtasks }) {
   const [editing, setEditing] = useState(false);
   const offerUndo = useUndoDelete();
   const badge = priorityBadges[priority];
@@ -63,6 +64,8 @@ export default function TaskItem({ id, title, dueDate, priority, notes, repeat, 
             <p className="mt-1 whitespace-pre-wrap break-words">{notes}</p>
           </details>
         )}
+
+        <Checklist taskId={id} taskTitle={title} subtasks={subtasks} />
       </div>
 
       <div className="flex shrink-0 gap-3 text-sm">
