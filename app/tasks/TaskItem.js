@@ -1,14 +1,15 @@
 "use client";
 // One row in the task list. A Client Component because it remembers whether
-// it's being edited (useState), and asks before deleting.
+// it's being edited (useState), and offers Undo after deleting.
 //
 // It only receives the fields it shows, not the whole database row: anything
 // passed to a Client Component is sent to the browser.
 
 import { useState } from "react";
-import { deleteTaskAction, toggleTaskAction } from "./actions";
+import { deleteTaskAction, duplicateTaskAction, toggleTaskAction } from "./actions";
 import DueDate from "./DueDate";
 import EditTaskForm from "./EditTaskForm";
+import { useUndoDelete } from "./UndoDelete";
 
 // Medium is the default, so only High and Low get a badge: a label on every
 // row would just be noise.
@@ -19,6 +20,7 @@ const priorityBadges = {
 
 export default function TaskItem({ id, title, dueDate, priority, notes, repeat, completed }) {
   const [editing, setEditing] = useState(false);
+  const offerUndo = useUndoDelete();
   const badge = priorityBadges[priority];
 
   if (editing) {
@@ -77,19 +79,25 @@ export default function TaskItem({ id, title, dueDate, priority, notes, repeat, 
           Edit
         </button>
 
-        <form action={deleteTaskAction}>
+        {/* A copy, made on the server from the saved task. */}
+        <form action={duplicateTaskAction}>
           <input type="hidden" name="id" value={id} />
-          <button
-            type="submit"
-            // Deleting can't be undone, so ask first. preventDefault on the
-            // button's click stops the form from being submitted at all.
-            onClick={(event) => {
-              if (!window.confirm(`Delete "${title}"? This can't be undone.`)) {
-                event.preventDefault();
-              }
-            }}
-            className="text-red-700 hover:underline dark:text-red-400"
-          >
+          <button type="submit" className="hover:underline">
+            Duplicate
+          </button>
+        </form>
+
+        {/* A form action can be our own function, not just a Server Action:
+            this one calls the Server Action, then uses what it returns (the
+            deleted task) to offer Undo. */}
+        <form
+          action={async (formData) => {
+            const deleted = await deleteTaskAction(formData);
+            if (deleted) offerUndo(deleted);
+          }}
+        >
+          <input type="hidden" name="id" value={id} />
+          <button type="submit" className="text-red-700 hover:underline dark:text-red-400">
             Delete
           </button>
         </form>

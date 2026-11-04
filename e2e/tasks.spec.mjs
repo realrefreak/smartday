@@ -109,7 +109,7 @@ test.describe("just after midnight in India", () => {
   });
 });
 
-test("edit a task, cancel an edit, and delete a task after confirming", async ({ page }) => {
+test("edit a task, cancel an edit, and delete a task", async ({ page }) => {
   await signUp(page, { email: uniqueEmail("edit") });
   await addTask(page, "Buy mlik", { dueDate: "2026-12-01" });
   await addTask(page, "Old task");
@@ -135,13 +135,8 @@ test("edit a task, cancel an edit, and delete a task after confirming", async ({
   await editRow.getByRole("button", { name: "Cancel" }).click();
   await expect(taskRow(page, "Buy milk")).toBeVisible();
 
-  // Delete, but say "Cancel" in the confirm box: nothing happens.
-  page.once("dialog", (dialog) => dialog.dismiss());
-  await taskRow(page, "Old task").getByRole("button", { name: "Delete" }).click();
-  await expect(taskRow(page, "Old task")).toBeVisible();
-
-  // Delete and confirm: it's gone, even after a reload.
-  page.once("dialog", (dialog) => dialog.accept());
+  // Delete: it's gone at once (no confirm box; there's Undo instead, see
+  // task-undo.spec.mjs), and still gone after a reload.
   await taskRow(page, "Old task").getByRole("button", { name: "Delete" }).click();
   await expect(taskRow(page, "Old task")).toHaveCount(0);
 

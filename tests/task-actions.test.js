@@ -12,6 +12,8 @@ vi.mock("@/lib/tasks", () => ({
   addTask: vi.fn(),
   deleteCompletedTasks: vi.fn(),
   deleteTask: vi.fn(),
+  duplicateTask: vi.fn(),
+  restoreTask: vi.fn(),
   toggleTask: vi.fn(),
   updateTask: vi.fn(),
 }));
@@ -23,11 +25,21 @@ vi.mock("@/lib/session", () => ({
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/session";
-import { addTask, deleteCompletedTasks, deleteTask, toggleTask, updateTask } from "@/lib/tasks";
+import {
+  addTask,
+  deleteCompletedTasks,
+  deleteTask,
+  duplicateTask,
+  restoreTask,
+  toggleTask,
+  updateTask,
+} from "@/lib/tasks";
 import {
   clearCompletedAction,
   createTaskAction,
   deleteTaskAction,
+  duplicateTaskAction,
+  restoreTaskAction,
   toggleTaskAction,
   updateTaskAction,
 } from "@/app/tasks/actions";
@@ -319,19 +331,139 @@ describe("deleteTaskAction", () => {
     const data = new FormData();
     data.set("id", TASK_ID);
 
-    await deleteTaskAction(data);
+    expect(await deleteTaskAction(data)).toBeNull();
 
     expect(deleteTask).not.toHaveBeenCalled();
   });
 
-  it("deletes on behalf of the signed-in user only", async () => {
+  it("deletes on behalf of the signed-in user only, and returns what it deleted", async () => {
+    getCurrentUser.mockResolvedValue(signedInUser);
+    deleteTask.mockResolvedValue({
+      id: TASK_ID,
+      userId: "user-1",
+      title: "Buy milk",
+      dueDate: "2026-12-01",
+      priority: "high",
+      notes: null,
+      repeat: null,
+      completed: true,
+      createdAt: new Date(),
+    });
+    const data = new FormData();
+    data.set("id", TASK_ID);
+
+    const deleted = await deleteTaskAction(data);
+
+    expect(deleteTask).toHaveBeenCalledWith("user-1", TASK_ID);
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+    // Just the details, not the id or the owner.
+    expect(deleted).toEqual({
+      title: "Buy milk",
+      dueDate: "2026-12-01",
+      priority: "high",
+      notes: null,
+      repeat: null,
+      completed: true,
+    });
+  });
+
+  it("returns null when there was nothing to delete", async () => {
+    getCurrentUser.mockResolvedValue(signedInUser);
+    deleteTask.mockResolvedValue(null);
+    const data = new FormData();
+    data.set("id", TASK_ID);
+
+    expect(await deleteTaskAction(data)).toBeNull();
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe("restoreTaskAction", () => {
+  const deleted = {
+    title: "Water plants",
+    dueDate: "2026-12-01",
+    priority: "low",
+    notes: "Big ones",
+    repeat: "weekly",
+    completed: false,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getCurrentUser.mockResolvedValue(signedInUser);
+  });
+
+  it("refuses when nobody is signed in", async () => {
+    getCurrentUser.mockResolvedValue(null);
+
+    expect(await restoreTaskAction(deleted)).toEqual({ ok: false, error: expect.stringMatching(/sign in/) });
+    expect(restoreTask).not.toHaveBeenCalled();
+  });
+
+  it("puts the task back for the signed-in user", async () => {
+    expect(await restoreTaskAction(deleted)).toEqual({ ok: true });
+
+    expect(restoreTask).toHaveBeenCalledWith("user-1", deleted);
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("keeps a finished task finished", async () => {
+    await restoreTaskAction({ ...deleted, repeat: null, completed: true });
+
+    expect(restoreTask).toHaveBeenCalledWith("user-1", expect.objectContaining({ completed: true }));
+  });
+
+  it.each([
+    ["an empty title", { title: "  " }],
+    ["a bad date", { dueDate: "2026-02-30" }],
+    ["an unknown priority", { priority: "urgent" }],
+    ["notes that are too long", { notes: "x".repeat(1001) }],
+    ["repeating without a date", { dueDate: null }],
+    ["completed that is not true or false", { completed: "yes" }],
+  ])("checks everything like a new task: refuses %s", async (_, change) => {
+    expect(await restoreTaskAction({ ...deleted, ...change })).toEqual({
+      ok: false,
+      error: "This task can't be restored.",
+    });
+    expect(restoreTask).not.toHaveBeenCalled();
+  });
+
+  it("refuses something that is not a task at all", async () => {
+    expect((await restoreTaskAction(null)).ok).toBe(false);
+    expect((await restoreTaskAction("drop table")).ok).toBe(false);
+    expect(restoreTask).not.toHaveBeenCalled();
+  });
+
+  it("never passes on fields it did not check", async () => {
+    await restoreTaskAction({ ...deleted, userId: "someone-else", id: TASK_ID });
+
+    expect(restoreTask).toHaveBeenCalledWith("user-1", deleted);
+  });
+});
+
+describe("duplicateTaskAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("does nothing when nobody is signed in", async () => {
+    getCurrentUser.mockResolvedValue(null);
+    const data = new FormData();
+    data.set("id", TASK_ID);
+
+    await duplicateTaskAction(data);
+
+    expect(duplicateTask).not.toHaveBeenCalled();
+  });
+
+  it("copies on behalf of the signed-in user only", async () => {
     getCurrentUser.mockResolvedValue(signedInUser);
     const data = new FormData();
     data.set("id", TASK_ID);
 
-    await deleteTaskAction(data);
+    await duplicateTaskAction(data);
 
-    expect(deleteTask).toHaveBeenCalledWith("user-1", TASK_ID);
+    expect(duplicateTask).toHaveBeenCalledWith("user-1", TASK_ID);
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
   });
 });

@@ -11,9 +11,11 @@ import {
 import { getTaskCounts, listTasks } from "@/lib/tasks";
 import AddTaskForm from "./AddTaskForm";
 import ClearCompletedButton from "./ClearCompletedButton";
+import KeyboardShortcuts from "./KeyboardShortcuts";
 import TaskProgress from "./TaskProgress";
 import TaskItem from "./TaskItem";
 import TaskSearch from "./TaskSearch";
+import UndoDeleteProvider from "./UndoDelete";
 
 export const metadata = {
   title: "Tasks",
@@ -115,26 +117,30 @@ export default async function TasksPage({ searchParams }) {
         </div>
       </div>
 
-      {tasks.length === 0 ? (
-        <p className="text-zinc-600 dark:text-zinc-400">{emptyMessage}</p>
-      ) : (
-        <ul className="divide-y divide-black/10 dark:divide-white/15">
-          {/* TaskItem is a Client Component (it has an edit mode), so pass
-              only what it needs: these values are sent to the browser. */}
-          {tasks.map((task) => (
-            <TaskItem
-              key={task.id}
-              id={task.id}
-              title={task.title}
-              dueDate={task.dueDate}
-              priority={task.priority}
-              notes={task.notes}
-              repeat={task.repeat}
-              completed={task.completed}
-            />
-          ))}
-        </ul>
-      )}
+      {/* A Client Component wrapping Server-rendered content: the rows
+          inside can reach it to offer Undo after a delete. */}
+      <UndoDeleteProvider>
+        {tasks.length === 0 ? (
+          <p className="text-zinc-600 dark:text-zinc-400">{emptyMessage}</p>
+        ) : (
+          <ul className="divide-y divide-black/10 dark:divide-white/15">
+            {/* TaskItem is a Client Component (it has an edit mode), so pass
+                only what it needs: these values are sent to the browser. */}
+            {tasks.map((task) => (
+              <TaskItem
+                key={task.id}
+                id={task.id}
+                title={task.title}
+                dueDate={task.dueDate}
+                priority={task.priority}
+                notes={task.notes}
+                repeat={task.repeat}
+                completed={task.completed}
+              />
+            ))}
+          </ul>
+        )}
+      </UndoDeleteProvider>
 
       {/* Counts every finished task, not just the ones on screen, because
           that's what the button deletes. */}
@@ -143,6 +149,8 @@ export default async function TasksPage({ searchParams }) {
           <ClearCompletedButton count={counts.completed} />
         </div>
       )}
+
+      <KeyboardShortcuts />
     </section>
   );
 }

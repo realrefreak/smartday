@@ -13,6 +13,8 @@ import {
   addTask,
   deleteCompletedTasks,
   deleteTask,
+  duplicateTask,
+  restoreTask,
   toggleTask,
   updateTask,
 } from "@/lib/tasks";
@@ -173,14 +175,72 @@ export async function updateTaskAction(prevState, formData) {
   return { ok: true, error: "", field: "", ...typed };
 }
 
+// Deletes a task, and returns a copy of what was deleted so the page can offer
+// "Undo". Only the fields the user typed are sent back (no ids or owner).
+// Returns null if nothing was deleted.
 export async function deleteTaskAction(formData) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return null;
+  }
+
+  // Like toggling: only matches this user's own task.
+  const deleted = await deleteTask(user.id, String(formData.get("id") ?? ""));
+  if (!deleted) {
+    return null;
+  }
+
+  revalidatePath("/tasks");
+  const { title, dueDate, priority, notes, repeat, completed } = deleted;
+  return { title, dueDate, priority, notes, repeat, completed };
+}
+
+// "Undo" after deleting: puts the task back. The task comes from the browser,
+// and anyone could send anything here, so every field goes through the same
+// checks as adding a task. In effect this is "add a task with these details".
+// Returns { ok: true } or { ok: false, error }.
+export async function restoreTaskAction(task) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, error: SIGNED_OUT_ERROR };
+  }
+
+  const fields = task && typeof task === "object" ? task : {};
+  const title = validateTaskTitle(fields.title);
+  const dueDate = validateDueDate(fields.dueDate);
+  const priority = validatePriority(fields.priority);
+  const notes = validateNotes(fields.notes);
+  const repeat = dueDate.ok ? validateRepeat(fields.repeat, dueDate.dueDate) : dueDate;
+  const completed = typeof fields.completed === "boolean" ? fields.completed : null;
+
+  if (!title.ok || !dueDate.ok || !priority.ok || !notes.ok || !repeat.ok || completed === null) {
+    return { ok: false, error: "This task can't be restored." };
+  }
+
+  // Only the checked values are passed on: an extra "userId" or "id" sent by
+  // the browser is simply ignored.
+  await restoreTask(user.id, {
+    title: title.title,
+    dueDate: dueDate.dueDate,
+    priority: priority.priority,
+    notes: notes.notes,
+    repeat: repeat.repeat,
+    completed,
+  });
+
+  revalidatePath("/tasks");
+  return { ok: true };
+}
+
+// Copies a task. Only the id comes from the form; the details are read from
+// the database, and duplicateTask only finds this user's own tasks.
+export async function duplicateTaskAction(formData) {
   const user = await getCurrentUser();
   if (!user) {
     return;
   }
 
-  // Like toggling: only matches this user's own task.
-  await deleteTask(user.id, String(formData.get("id") ?? ""));
+  await duplicateTask(user.id, String(formData.get("id") ?? ""));
   revalidatePath("/tasks");
 }
 
