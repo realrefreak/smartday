@@ -2,12 +2,13 @@
 // The form a task row turns into when you click Edit.
 
 import { useActionState, useId } from "react";
-import { TITLE_MAX_LENGTH } from "@/lib/task-validation";
+import { NOTES_MAX_LENGTH, TITLE_MAX_LENGTH } from "@/lib/task-validation";
 import { updateTaskAction } from "./actions";
 import { fieldErrorProps } from "./field-error-props";
+import PrioritySelect from "./PrioritySelect";
 import { inputClass } from "./styles";
 
-export default function EditTaskForm({ id, title, dueDate, onDone }) {
+export default function EditTaskForm({ id, title, dueDate, priority, notes, onDone }) {
   // Every row could show this form, so ids must be unique on the page.
   const fieldId = useId();
   const errorId = `${fieldId}-error`;
@@ -22,7 +23,7 @@ export default function EditTaskForm({ id, title, dueDate, onDone }) {
       }
       return result;
     },
-    { ok: false, error: "", field: "", title, dueDate: dueDate ?? "" },
+    { ok: false, error: "", field: "", title, dueDate: dueDate ?? "", priority, notes: notes ?? "" },
   );
 
   const errorProps = (field) => fieldErrorProps(state, field, errorId);
@@ -66,6 +67,31 @@ export default function EditTaskForm({ id, title, dueDate, onDone }) {
           className={inputClass}
         />
 
+        <PrioritySelect
+          id={`${fieldId}-priority`}
+          defaultValue={state.priority}
+          {...errorProps("priority")}
+        />
+      </div>
+
+      {/* A visible label here: unlike the other boxes, an empty notes box has
+          nothing else saying what it's for. */}
+      <label htmlFor={`${fieldId}-notes`} className="block text-sm text-zinc-600 dark:text-zinc-400">
+        Notes
+      </label>
+      <textarea
+        id={`${fieldId}-notes`}
+        name="notes"
+        rows={3}
+        maxLength={NOTES_MAX_LENGTH}
+        defaultValue={state.notes}
+        placeholder="Optional details"
+        {...errorProps("notes")}
+        className={`${inputClass} w-full`}
+      />
+
+      {/* After the notes box, so Tab moves through the form top to bottom. */}
+      <div className="flex gap-2">
         <button
           type="submit"
           disabled={pending}

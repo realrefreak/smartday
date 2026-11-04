@@ -29,6 +29,13 @@
       "when": 1793706585738,
       "tag": "0003_gorgeous_hannibal_king",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793800503171,
+      "tag": "0004_add_task_priority_and_notes",
+      "breakpoints": true
     }
   ]
 }

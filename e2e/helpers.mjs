@@ -38,10 +38,14 @@ export function formError(page) {
 }
 
 // dueDate is optional, as "YYYY-MM-DD" (what a date input accepts).
-export async function addTask(page, title, { dueDate } = {}) {
+// priority is optional, as the label shown in the drop-down ("High" etc.).
+export async function addTask(page, title, { dueDate, priority } = {}) {
   await page.getByLabel("New task").fill(title);
   if (dueDate) {
     await page.getByLabel("Due date").fill(dueDate);
+  }
+  if (priority) {
+    await page.getByLabel("Priority").selectOption({ label: priority });
   }
   await page.getByRole("button", { name: "Add" }).click();
   await expect(page.getByRole("listitem").filter({ hasText: title })).toBeVisible();

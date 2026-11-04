@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { TITLE_MAX_LENGTH, validateDueDate, validateTaskTitle } from "@/lib/task-validation";
+import {
+  NOTES_MAX_LENGTH,
+  TITLE_MAX_LENGTH,
+  validateDueDate,
+  validateNotes,
+  validatePriority,
+  validateTaskTitle,
+} from "@/lib/task-validation";
 import { dueDateStatus, formatDueDate, toLocalDateString } from "@/lib/due-date";
 
 describe("validateTaskTitle", () => {
@@ -116,5 +123,46 @@ describe("dueDateStatus", () => {
   it("is upcoming when the due date is in the future", () => {
     expect(dueDateStatus("2026-11-16", today)).toBe("upcoming");
     expect(dueDateStatus("2027-01-01", today)).toBe("upcoming");
+  });
+});
+
+describe("validatePriority", () => {
+  it("accepts high, medium and low", () => {
+    expect(validatePriority("high")).toEqual({ ok: true, priority: "high" });
+    expect(validatePriority("medium")).toEqual({ ok: true, priority: "medium" });
+    expect(validatePriority("low")).toEqual({ ok: true, priority: "low" });
+  });
+
+  it("uses medium when no priority is sent", () => {
+    expect(validatePriority(null)).toEqual({ ok: true, priority: "medium" });
+    expect(validatePriority("")).toEqual({ ok: true, priority: "medium" });
+  });
+
+  it("rejects anything else", () => {
+    expect(validatePriority("urgent").ok).toBe(false);
+    expect(validatePriority("HIGH").ok).toBe(false);
+    expect(validatePriority(new File([], "x")).ok).toBe(false);
+  });
+});
+
+describe("validateNotes", () => {
+  it("keeps line breaks, trims the ends, and stores \\n line endings", () => {
+    expect(validateNotes("  Aisle 3\r\nAisle 7  ")).toEqual({ ok: true, notes: "Aisle 3\nAisle 7" });
+  });
+
+  it("turns empty notes into no notes", () => {
+    expect(validateNotes("")).toEqual({ ok: true, notes: null });
+    expect(validateNotes("  \n ")).toEqual({ ok: true, notes: null });
+    expect(validateNotes(null)).toEqual({ ok: true, notes: null });
+  });
+
+  it("allows tabs but no other invisible control characters", () => {
+    expect(validateNotes("a\tb").ok).toBe(true);
+    expect(validateNotes("a\u0000b")).toEqual({ ok: false, error: "Notes contain invalid characters." });
+  });
+
+  it(`rejects notes longer than ${NOTES_MAX_LENGTH} characters`, () => {
+    expect(validateNotes("a".repeat(NOTES_MAX_LENGTH)).ok).toBe(true);
+    expect(validateNotes("a".repeat(NOTES_MAX_LENGTH + 1)).ok).toBe(false);
   });
 });
