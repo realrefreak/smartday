@@ -2,7 +2,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db";
 import { subtasks, user } from "@/db/schema";
 import { addSubtask, deleteSubtask, listSubtasks, toggleSubtask } from "@/lib/subtasks";
-import { addTask, clearTasks, deleteTask, duplicateTask, listTasks, restoreTask } from "@/lib/tasks";
+import {
+  addTask,
+  clearTasks,
+  deleteTask,
+  duplicateTask,
+  listTasks,
+  restoreTask,
+  toggleTask,
+} from "@/lib/tasks";
 import { SUBTASKS_MAX } from "@/lib/task-validation";
 
 describe("subtask store safety checks", () => {
@@ -113,6 +121,41 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("subtask store (database)", () =
 
     expect(await deleteTask(B, task.id)).toBeNull();
     expect(await listSubtasks(A)).toHaveLength(1);
+  });
+
+  it("a repeating task's checklist unticks when it moves to its next date", async () => {
+    const task = await addTask(A, "Clean flat", "2026-11-05", "medium", "weekly");
+    const { subtask: kitchen } = await addSubtask(A, task.id, "Kitchen");
+    const { subtask: bathroom } = await addSubtask(A, task.id, "Bathroom");
+    await toggleSubtask(A, kitchen.id);
+    await toggleSubtask(A, bathroom.id);
+
+    const moved = await toggleTask(A, task.id);
+
+    expect(moved).toMatchObject({ dueDate: "2026-11-12", completed: false });
+    expect((await listSubtasks(A)).map((item) => item.completed)).toEqual([false, false]);
+  });
+
+  it("a one-off task keeps its ticks when marked done and undone", async () => {
+    const task = await addTask(A, "Move house", "2026-11-05");
+    const { subtask } = await addSubtask(A, task.id, "Book van");
+    await toggleSubtask(A, subtask.id);
+
+    await toggleTask(A, task.id);
+    await toggleTask(A, task.id);
+
+    expect((await listSubtasks(A))[0].completed).toBe(true);
+  });
+
+  it("someone else toggling your repeating task changes nothing", async () => {
+    const task = await addTask(A, "Clean flat", "2026-11-05", "medium", "weekly");
+    const { subtask } = await addSubtask(A, task.id, "Kitchen");
+    await toggleSubtask(A, subtask.id);
+
+    expect(await toggleTask(B, task.id)).toBeNull();
+
+    expect((await listSubtasks(A))[0].completed).toBe(true);
+    expect((await listTasks(A))[0].dueDate).toBe("2026-11-05");
   });
 
   it("duplicating a task copies its items, all unticked", async () => {

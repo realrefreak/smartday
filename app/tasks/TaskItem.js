@@ -5,7 +5,10 @@
 // It only receives the fields it shows, not the whole database row: anything
 // passed to a Client Component is sent to the browser.
 
+import Link from "next/link";
 import { useState } from "react";
+import { splitTags } from "@/lib/tags";
+import { tasksHref } from "@/lib/task-filter";
 import { deleteTaskAction, duplicateTaskAction, toggleTaskAction } from "./actions";
 import Checklist from "./Checklist";
 import DueDate from "./DueDate";
@@ -44,7 +47,21 @@ export default function TaskItem({ id, title, dueDate, priority, notes, repeat, 
     <li className="flex items-center justify-between gap-4 py-3">
       <div className="min-w-0">
         <span className={completed ? "break-words text-zinc-500 line-through" : "break-words"}>
-          {title}
+          {/* Tags like #work become links that list every task with that tag. */}
+          {splitTags(title).map((part, index) =>
+            part.tag ? (
+              <Link
+                key={index}
+                href={tasksHref({ query: part.tag })}
+                title={`Show tasks tagged ${part.tag}`}
+                className="rounded bg-sky-100 px-1 text-sky-800 hover:underline dark:bg-sky-950 dark:text-sky-300"
+              >
+                {part.tag}
+              </Link>
+            ) : (
+              part.text
+            ),
+          )}
         </span>
         {badge && (
           <span className={`ml-2 rounded px-1.5 py-0.5 text-xs font-medium ${badge.className}`}>

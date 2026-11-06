@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { requireUser } from "@/lib/session";
 import {
@@ -10,12 +11,14 @@ import {
 } from "@/lib/task-filter";
 import { listSubtasks } from "@/lib/subtasks";
 import { getTaskCounts, listTasks } from "@/lib/tasks";
+import { TIME_ZONE_COOKIE, parseTimeZone, todayIn } from "@/lib/time-zone";
 import AddTaskForm from "./AddTaskForm";
 import ClearCompletedButton from "./ClearCompletedButton";
 import KeyboardShortcuts from "./KeyboardShortcuts";
 import TaskProgress from "./TaskProgress";
 import TaskItem from "./TaskItem";
 import TaskSearch from "./TaskSearch";
+import TimeZoneCookie from "./TimeZoneCookie";
 import UndoDeleteProvider from "./UndoDelete";
 
 export const metadata = {
@@ -26,6 +29,7 @@ export const metadata = {
 const EMPTY_MESSAGES = {
   all: "No tasks yet. Add your first one above.",
   active: "Nothing left to do. Nice!",
+  today: "Nothing due today. Enjoy!",
   done: "No finished tasks yet.",
 };
 
@@ -70,10 +74,15 @@ export default async function TasksPage({ searchParams }) {
   const sort = parseTaskSort(params.sort);
   const query = parseSearchQuery(params.q);
 
+  // The user's own date, from the time zone their browser saved (UTC until
+  // it has). Used by the "Today" filter.
+  const savedTimeZone = (await cookies()).get(TIME_ZONE_COOKIE)?.value;
+  const today = todayIn(parseTimeZone(savedTimeZone));
+
   // Three independent queries, so run them at the same time. All only ever
   // see this user's tasks.
   const [tasks, counts, subtasks] = await Promise.all([
-    listTasks(user.id, { filter, sort, query }),
+    listTasks(user.id, { filter, sort, query, today }),
     getTaskCounts(user.id),
     listSubtasks(user.id),
   ]);
@@ -86,6 +95,8 @@ export default async function TasksPage({ searchParams }) {
 
   return (
     <section className="space-y-6">
+      <TimeZoneCookie saved={savedTimeZone} />
+
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-3xl font-semibold">Tasks</h1>
         {/* A plain <a>, not <Link>: this downloads a file from a Route
