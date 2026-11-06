@@ -1,5 +1,6 @@
 // Runs the same E2E tests against a deployed pull request preview on Vercel,
-// instead of a local build. Used by the preview-and-ship agent:
+// instead of a local build. Used by the "E2E tests on the preview" CI job,
+// and by hand:
 //
 //   PREVIEW_URL=https://smartday-abc123.vercel.app npm run test:preview
 //

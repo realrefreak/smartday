@@ -8,6 +8,7 @@
 #
 #   checks ──(passed, push to main)──────> deploy           (production)
 #   checks ──(passed, pull request)──────> preview          (preview URL + preview database)
+#                                            └──> preview-e2e  (all E2E tests on the live preview)
 #   pull request closed or merged ───────> preview-cleanup  (deletes the preview database)
 
 name: CI
@@ -217,6 +218,10 @@ jobs:
       name: preview
       url: ${{ steps.deploy.outputs.url }}
 
+    # Hands the preview's address to the preview-e2e job below.
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+
     env:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
@@ -300,6 +305,74 @@ jobs:
           url=$(vercel deploy --prebuilt --token="$VERCEL_TOKEN" --env DATABASE_URL="$DATABASE_URL")
           echo "Preview deployed to $url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  # Runs every E2E test against the live preview: the real Vercel deployment
+  # with its own database, exactly as it will run in production. Together with
+  # "Lint, unit tests, E2E tests" this is a required check on main (a GitHub
+  # ruleset), so a pull request set to auto-merge only merges once both pass,
+  # with nobody needing to watch it.
+  preview-e2e:
+    name: E2E tests on the preview
+    needs: preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: preview
+
+    env:
+      PREVIEW_URL: ${{ needs.preview.outputs.url }}
+      # Gets the tests past Vercel's login on previews (Vercel > Settings >
+      # Deployment Protection > Protection Bypass for Automation).
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check the bypass secret is set
+        run: |
+          if [ -z "$VERCEL_AUTOMATION_BYPASS_SECRET" ]; then
+            echo "::error::VERCEL_AUTOMATION_BYPASS_SECRET is missing. Add it to the 'preview' environment in GitHub."
+            exit 1
+          fi
+
+      # A brand-new deployment can take a few seconds to answer. Wait for a
+      # healthy /api/health (up to about a minute) before testing.
+      - name: Wait for the preview to be healthy
+        run: |
+          for attempt in $(seq 1 12); do
+            status=$(curl -s -o /dev/null -w '%{http_code}'               -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET"               "$PREVIEW_URL/api/health" || true)
+            if [ "$status" = "200" ]; then
+              echo "Preview is healthy."
+              exit 0
+            fi
+            echo "Attempt $attempt: got $status, waiting..."
+            sleep 5
+          done
+          echo "::error::$PREVIEW_URL/api/health never returned 200."
+          exit 1
+
+      - name: Install Playwright's browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests against the preview
+        run: npm run test:preview
+
+      - name: Save Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-playwright-traces
+          path: test-results/preview/
+          retention-days: 7
 
   # Once a pull request is merged or closed, its preview database is no longer
   # needed. Deleting it frees up Neon's branch limit (free plans allow only a
