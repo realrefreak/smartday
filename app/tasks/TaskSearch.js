@@ -21,8 +21,19 @@ export default function TaskSearch({ filter, sort, query }) {
   const [isPending, startTransition] = useTransition();
   const timer = useRef(null);
 
+  const input = useRef(null);
+
   // If the component goes away (e.g. you sign out), cancel a pending search.
   useEffect(() => () => clearTimeout(timer.current), []);
+
+  // defaultValue only counts when the box first appears. When the search
+  // changes from elsewhere (clicking a #tag), show it in the box, unless
+  // you're typing in it right now (that would fight with your typing).
+  useEffect(() => {
+    if (input.current && document.activeElement !== input.current) {
+      input.current.value = query;
+    }
+  }, [query]);
 
   function search(text) {
     clearTimeout(timer.current);
@@ -47,6 +58,7 @@ export default function TaskSearch({ filter, sort, query }) {
         Search tasks
       </label>
       <input
+        ref={input}
         id="task-search"
         name="q"
         type="search"

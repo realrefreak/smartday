@@ -321,6 +321,45 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("task store (database)", () => {
     expect(await listTasks(A)).toHaveLength(1);
   });
 
+  it("Today shows unfinished tasks due today or earlier", async () => {
+    await addTask(A, "Overdue", "2026-11-04");
+    await addTask(A, "Due today", "2026-11-05");
+    await addTask(A, "Tomorrow", "2026-11-06");
+    await addTask(A, "Undated");
+    const finished = await addTask(A, "Done already", "2026-11-05");
+    await toggleTask(A, finished.id);
+    await addTask(B, "B's task", "2026-11-05");
+
+    const today = await listTasks(A, { filter: "today", today: "2026-11-05" });
+
+    expect(today.map((task) => task.title)).toEqual(["Overdue", "Due today"]);
+  });
+
+  it("refuses the Today filter without the user's date", async () => {
+    await expect(listTasks(A, { filter: "today" })).rejects.toThrow(/needs the user's date/);
+  });
+
+  it("finds a tag as a whole word only, in any case", async () => {
+    await addTask(A, "Report #work");
+    await addTask(A, "#Work call");
+    await addTask(A, "Plan #workshop");
+    await addTask(A, "Fix bike #work-life");
+    await addTask(A, "Note about work");
+    await addTask(B, "B's #work");
+
+    const found = await listTasks(A, { query: "#work" });
+
+    expect(found.map((task) => task.title).sort()).toEqual(["#Work call", "Report #work"]);
+  });
+
+  it("still searches plain text the old way", async () => {
+    await addTask(A, "Plan #workshop");
+    await addTask(A, "Note about work");
+
+    expect(await listTasks(A, { query: "work" })).toHaveLength(2);
+    expect(await listTasks(A, { query: "#work shop" })).toEqual([]);
+  });
+
   it("does not let one user copy another user's task", async () => {
     const aTask = await addTask(A, "A's secret");
 

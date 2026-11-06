@@ -12,6 +12,7 @@ describe("parseTaskFilter", () => {
     expect(parseTaskFilter("all")).toBe("all");
     expect(parseTaskFilter("active")).toBe("active");
     expect(parseTaskFilter("done")).toBe("done");
+    expect(parseTaskFilter("today")).toBe("today");
   });
 
   it("falls back to 'all' when the URL has no filter", () => {
@@ -65,6 +66,7 @@ describe("tasksHref", () => {
   it("puts other filters in the URL", () => {
     expect(tasksHref({ filter: "active" })).toBe("/tasks?show=active");
     expect(tasksHref({ filter: "done" })).toBe("/tasks?show=done");
+    expect(tasksHref({ filter: "today" })).toBe("/tasks?show=today");
   });
 
   it("keeps filter, sort and search together", () => {
