@@ -1,0 +1,53 @@
+# Hourly "alarm clock" for daily email reminders.
+#
+# Vercel's free plan only runs scheduled jobs once a day, but people want
+# their reminder at 8:00 in THEIR time zone, which is a different moment for
+# each of them. So GitHub calls the app every hour, and the app works out
+# whose reminder is due (see lib/reminders.js).
+#
+# GitHub may start scheduled runs a little late when it's busy; the app
+# allows for that. You can also run it by hand: Actions -> Reminders -> Run workflow.
+
+name: Reminders
+
+on:
+  schedule:
+    # Minute 7 of every hour, in UTC. (Not minute 0: that's when everyone
+    # else's scheduled jobs start, so GitHub is busiest then.)
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+# Never two at once (the app also guards against double emails).
+concurrency:
+  group: reminders
+  cancel-in-progress: false
+
+jobs:
+  send:
+    name: Send due reminders
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The secret lives in the "production" environment, next to the other
+    # production secrets.
+    environment: production
+
+    steps:
+      - name: Call the reminders endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://smartday-one.vercel.app' }}
+        run: |
+          # Not set up yet: say so, but don't fail every hour.
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::notice::CRON_SECRET is not set in the production environment, so no reminders were sent."
+            exit 0
+          fi
+
+          # --fail: a 401 or 500 makes this step (and the run) fail, so a
+          # broken setup shows up as a red X in the Actions tab.
+          curl --fail-with-body --silent --show-error --max-time 90 \
+            -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/reminders"

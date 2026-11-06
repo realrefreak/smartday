@@ -1,7 +1,9 @@
+import { getReminderSettings } from "@/lib/reminders";
 import { requireUser } from "@/lib/session";
 import ChangePasswordForm from "./ChangePasswordForm";
 import DeleteAccountForm from "./DeleteAccountForm";
 import NameForm from "./NameForm";
+import ReminderForm from "./ReminderForm";
 
 export const metadata = {
   title: "Account",
@@ -10,6 +12,7 @@ export const metadata = {
 export default async function AccountPage() {
   // Same real login check as /tasks (proxy.js only looks for a cookie).
   const user = await requireUser();
+  const reminders = await getReminderSettings(user.id);
 
   return (
     <section className="space-y-10">
@@ -23,6 +26,13 @@ export default async function AccountPage() {
           Profile
         </h2>
         <NameForm name={user.name} />
+      </section>
+
+      <section aria-labelledby="reminders-heading" className="space-y-3">
+        <h2 id="reminders-heading" className="text-xl font-semibold">
+          Email reminders
+        </h2>
+        <ReminderForm email={user.email} enabled={reminders.enabled} hour={reminders.hour} />
       </section>
 
       <section aria-labelledby="password-heading" className="space-y-3">

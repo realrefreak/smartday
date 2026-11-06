@@ -57,6 +57,13 @@
       "when": 1793979270535,
       "tag": "0007_add_task_completions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793980922940,
+      "tag": "0008_add_reminder_settings",
+      "breakpoints": true
     }
   ]
 }
