@@ -22,12 +22,12 @@ test("change your name from the Account page", async ({ page }) => {
   await expect(page).toHaveURL("/account");
   await expect(page.getByText(`Signed in as ${email}`)).toBeVisible();
 
-  await page.getByLabel("Name").fill("  New Name ");
+  await page.getByLabel("Name", { exact: true }).fill("  New Name ");
   await page.getByRole("button", { name: "Save name" }).click();
   await expect(page.getByRole("status")).toHaveText("Name saved.");
 
   await page.reload();
-  await expect(page.getByLabel("Name")).toHaveValue("New Name");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("New Name");
 });
 
 test("change your password, then sign in with the new one", async ({ page }) => {

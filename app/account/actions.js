@@ -13,6 +13,8 @@ import {
   validateName,
   validatePasswordChange,
 } from "@/lib/auth-validation";
+import { saveReminderSettings } from "@/lib/reminders";
+import { validateReminderSettings } from "@/lib/reminder-validation";
 import { getCurrentUser } from "@/lib/session";
 
 const SIGNED_OUT_ERROR = "Your session has ended. Please sign in again.";
@@ -108,4 +110,40 @@ export async function deleteAccountAction(prevState, formData) {
 
   // Outside the try/catch: redirect() works by throwing.
   redirect("/?account=deleted");
+}
+
+// Saves the daily email reminder choice. Like every action here, the user
+// comes from the session, never from the form.
+export async function saveRemindersAction(prevState, formData) {
+  // What was chosen, so an error doesn't reset the form. (0 is a real hour,
+  // so check for a whole number rather than "truthy".)
+  const chosenHour = Number(formData.get("hour"));
+  const typed = {
+    enabled: formData.get("enabled") === "on",
+    hour: Number.isInteger(chosenHour) ? chosenHour : prevState.hour,
+  };
+
+  const user = await getCurrentUser();
+  if (!user) {
+    return { error: SIGNED_OUT_ERROR, success: "", ...typed };
+  }
+
+  const result = validateReminderSettings({
+    enabled: formData.get("enabled"),
+    hour: formData.get("hour"),
+    timeZone: formData.get("timeZone"),
+  });
+  if (!result.ok) {
+    return { error: result.error, success: "", ...typed };
+  }
+
+  await saveReminderSettings(user.id, result);
+
+  revalidatePath("/account");
+  return {
+    error: "",
+    success: result.enabled ? `Reminders on: daily at ${result.hour}:00 your time.` : "Reminders off.",
+    enabled: result.enabled,
+    hour: result.hour,
+  };
 }

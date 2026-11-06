@@ -3,7 +3,7 @@
 // it to build type-safe queries.
 
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import {
   DEFAULT_PRIORITY,
   NOTES_MAX_LENGTH,
@@ -124,4 +124,33 @@ export const taskCompletions = pgTable(
     index("task_completions_user_id_completed_at_idx").on(table.userId, table.completedAt),
     index("task_completions_task_id_idx").on(table.taskId),
   ],
+);
+
+// Each user's daily email reminder settings. One row per user, created the
+// first time they save the form; no row means "off". Its own table so
+// Better Auth's generated user table stays untouched.
+export const reminderSettings = pgTable(
+  "reminder_settings",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+
+    // Opt-in: nobody gets email unless they switch this on.
+    enabled: boolean("enabled").notNull().default(false),
+
+    // The hour (0-23) in the user's own time zone to send it.
+    hour: integer("hour").notNull().default(8),
+
+    // Saved from the browser when the form is saved. The hourly job runs on
+    // a server with no browser, so this is how it knows the user's clock.
+    timeZone: text("time_zone").notNull().default("UTC"),
+
+    // The user's date when the last reminder went out (or was checked and
+    // had nothing to say). Stops the same day being sent twice.
+    lastSentOn: date("last_sent_on", { mode: "string" }),
+
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [check("reminder_settings_hour_check", sql`${table.hour} between 0 and 23`)],
 );
