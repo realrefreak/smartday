@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { formatLongDate, greetingFor, hourIn, summarizeTasks } from "@/lib/dashboard";
 import { getCurrentUser } from "@/lib/session";
-import { getTaskCounts, listTasks } from "@/lib/tasks";
+import { streakStats } from "@/lib/streaks";
+import { getTaskCounts, listCompletionDays, listTasks } from "@/lib/tasks";
 import { TIME_ZONE_COOKIE, parseTimeZone, todayIn } from "@/lib/time-zone";
 import Dashboard from "./_home/Dashboard";
 import Landing from "./_home/Landing";
@@ -37,10 +38,12 @@ export default async function HomePage({ searchParams }) {
   const timeZone = parseTimeZone(savedTimeZone);
   const today = todayIn(timeZone);
 
-  // Unfinished tasks (high priority first) and the totals, at the same time.
-  const [activeTasks, counts] = await Promise.all([
+  // Unfinished tasks (high priority first), the totals and the days you
+  // finished something, all at the same time.
+  const [activeTasks, counts, completionDays] = await Promise.all([
     listTasks(user.id, { filter: "active", sort: "priority" }),
     getTaskCounts(user.id),
+    listCompletionDays(user.id, timeZone),
   ]);
 
   return (
@@ -54,6 +57,7 @@ export default async function HomePage({ searchParams }) {
         summary={summarizeTasks(activeTasks, today)}
         counts={counts}
         activeCount={activeTasks.length}
+        streak={streakStats(completionDays, today)}
       />
     </>
   );

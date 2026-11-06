@@ -9,6 +9,7 @@ import Link from "next/link";
 import { formatDueDate } from "@/lib/due-date";
 import { splitTags } from "@/lib/tags";
 import { tasksHref } from "@/lib/task-filter";
+import AddTaskForm from "../tasks/AddTaskForm";
 import TaskProgress from "../tasks/TaskProgress";
 
 const cardClass = "rounded-lg border border-black/10 p-4 dark:border-white/15";
@@ -95,10 +96,57 @@ function TaskPanel({ id, title, tasks, more, moreHref, empty, today }) {
   );
 }
 
+const weekdayLetter = new Intl.DateTimeFormat("en-GB", { weekday: "narrow", timeZone: "UTC" });
+const weekdayName = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" });
+
+// "3-day streak", with the last 7 days as dots (filled = finished something).
+function StreakCard({ streak }) {
+  const { current, best, doneToday, week } = streak;
+
+  let message = "Finish a task today to start a streak.";
+  if (current > 0 && !doneToday) message = "Finish a task today to keep it going.";
+  if (doneToday) message = current > 1 ? "You're on a roll. Keep it up!" : "Nice start. Come back tomorrow!";
+
+  return (
+    <section aria-labelledby="streak-heading" className={`${cardClass} flex flex-wrap items-center justify-between gap-4`}>
+      <div>
+        <h2 id="streak-heading" className="font-semibold">
+          {current === 0 ? "No streak yet" : `${current}-day streak`}
+        </h2>
+        <p className={`text-sm ${mutedClass}`}>
+          {message}
+          {best > current && ` Best: ${best} days.`}
+        </p>
+      </div>
+      <ol aria-label="Last 7 days" className="flex gap-1.5">
+        {week.map(({ date, done }) => {
+          const day = new Date(date);
+          return (
+            <li key={date} className="flex flex-col items-center gap-1 text-xs">
+              <span
+                className={`h-5 w-5 rounded-full ${
+                  done ? "bg-emerald-600" : "border border-black/20 dark:border-white/25"
+                }`}
+              >
+                <span className="sr-only">
+                  {weekdayName.format(day)}: {done ? "finished a task" : "nothing finished"}
+                </span>
+              </span>
+              <span aria-hidden="true" className={mutedClass}>
+                {weekdayLetter.format(day)}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 // For a brand-new account: what to try first.
 function GettingStarted() {
   const tips = [
-    ["Add a task", "with a due date and a priority."],
+    ["Give it a due date", "and a priority, so it shows up in the right place."],
     ["Tag it", "by typing a word like #work or #home in the title."],
     ["Make it repeat", "daily, weekly or monthly, for chores and habits."],
     ["Add a checklist", "to break a big task into small steps."],
@@ -107,6 +155,7 @@ function GettingStarted() {
   return (
     <section className={`${cardClass} space-y-3`}>
       <h2 className="font-semibold">Get started</h2>
+      <p className={`text-sm ${mutedClass}`}>Type your first task in the box above. Then try:</p>
       <ol className="list-inside list-decimal space-y-1 text-sm">
         {tips.map(([strong, rest]) => (
           <li key={strong}>
@@ -114,17 +163,11 @@ function GettingStarted() {
           </li>
         ))}
       </ol>
-      <Link
-        href="/tasks"
-        className="inline-block rounded bg-foreground px-4 py-2 text-sm text-background"
-      >
-        Add your first task
-      </Link>
     </section>
   );
 }
 
-export default function Dashboard({ name, greeting, today, todayText, summary, counts, activeCount }) {
+export default function Dashboard({ name, greeting, today, todayText, summary, counts, activeCount, streak }) {
   const firstName = name.trim().split(/\s+/)[0];
 
   return (
@@ -144,6 +187,10 @@ export default function Dashboard({ name, greeting, today, todayText, summary, c
           Open my tasks
         </Link>
       </div>
+
+      {/* The same Client Component as on the Tasks page. Its Server Action
+          also refreshes this page, so the new task appears below. */}
+      <AddTaskForm />
 
       {counts.total === 0 ? (
         <GettingStarted />
@@ -167,6 +214,8 @@ export default function Dashboard({ name, greeting, today, todayText, summary, c
           </div>
 
           <TaskProgress total={counts.total} completed={counts.completed} />
+
+          <StreakCard streak={streak} />
 
           <div className="grid gap-4 md:grid-cols-2">
             <TaskPanel

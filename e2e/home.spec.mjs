@@ -31,8 +31,13 @@ test("a new account gets tips for getting started", async ({ page }) => {
 
   await expect(page.getByRole("heading", { level: 1 })).toContainText(", Asha");
   await expect(page.getByRole("heading", { name: "Get started" })).toBeVisible();
-  await page.getByRole("link", { name: "Add your first task" }).click();
-  await expect(page).toHaveURL("/tasks");
+
+  // Quick add, right on the home page.
+  await page.getByLabel("New task").fill("Water the plants");
+  await page.getByRole("button", { name: "Add" }).click();
+  await expect(page.getByRole("region", { name: "Coming up" })).toBeVisible();
+  await expect(page.getByLabel("New task")).toHaveValue("");
+  await expect(page.getByRole("link", { name: /Still to do/ })).toContainText("1");
 });
 
 test.describe("in India", () => {

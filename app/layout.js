@@ -40,7 +40,7 @@ export default async function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col">
         <header className="border-b border-black/10 dark:border-white/15">
-          <nav className="mx-auto flex max-w-3xl items-center gap-6 px-4 py-4">
+          <nav className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-4">
             <Link href="/" className="text-lg font-semibold">
               SmartDay
             </Link>
@@ -49,6 +49,9 @@ export default async function RootLayout({ children }) {
             </Link>
             <Link href="/tasks" className="hover:underline">
               Tasks
+            </Link>
+            <Link href="/calendar" className="hover:underline">
+              Calendar
             </Link>
             <Link href="/about" className="hover:underline">
               About

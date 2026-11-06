@@ -50,6 +50,13 @@
       "when": 1793821736642,
       "tag": "0006_add_subtasks",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793979270535,
+      "tag": "0007_add_task_completions",
+      "breakpoints": true
     }
   ]
 }

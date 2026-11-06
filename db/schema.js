@@ -98,3 +98,30 @@ export const subtasks = pgTable(
   // Items are always looked up by their task.
   (table) => [index("subtasks_task_id_idx").on(table.taskId)],
 );
+
+// A diary of "the user finished a task at this moment", for streaks.
+// Its own table, not a column on tasks, because a repeating task is finished
+// many times (each time it moves to its next date) but is only one row.
+export const taskCompletions = pgTable(
+  "task_completions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Owner, so streaks can be counted straight from this table.
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+
+    // Which task. Deleting the task keeps the entry ("set null"): you still
+    // did it that day, so the streak shouldn't break.
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+
+    // The exact moment, with time zone. Which *day* that was depends on the
+    // user's time zone, so that's worked out when reading.
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("task_completions_user_id_completed_at_idx").on(table.userId, table.completedAt),
+    index("task_completions_task_id_idx").on(table.taskId),
+  ],
+);
