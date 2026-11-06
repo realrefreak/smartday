@@ -84,8 +84,10 @@ export async function createTaskAction(prevState, formData) {
 
   await addTask(user.id, title.title, dueDate.dueDate, priority.priority, repeat.repeat);
 
-  // Tell Next the /tasks page is out of date, so the response shows the new task.
+  // Tell Next the /tasks page (and the home page, which has its own add box)
+  // are out of date, so the response shows the new task.
   revalidatePath("/tasks");
+  revalidatePath("/");
 
   // Clear the form for the next task, but keep the priority: people often add
   // several tasks of the same priority in a row.
