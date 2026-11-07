@@ -20,10 +20,9 @@ on:
     # The defaults, plus "closed" so we can clean up the preview database.
     types: [opened, synchronize, reopened, closed]
 
-# Only one run at a time. All runs share the same test database, and the
-# database tests delete every task in it, so two overlapping runs could break
-# each other. It also means two deploys can never migrate production at once.
-# Newer runs wait in line.
+# Only one run at a time, so two deploys can never migrate production at
+# once. Newer runs wait in line. (Tests no longer need this: each run makes
+# its own throwaway database, see the checks job.)
 concurrency:
   group: ci-test-database
   cancel-in-progress: false
@@ -40,10 +39,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # For its Neon key: every run tests against its own fresh copy of the
+    # database. A shared test database broke when someone ran the tests on
+    # their own computer during a CI run: both wiped it at the same time.
+    environment: preview
+
     env:
-      # Comes from Settings -> Secrets and variables -> Actions in GitHub.
-      # Never written in this file: anyone who can read the repo can read this file.
-      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      # Secrets come from Settings -> Environments -> preview in GitHub, never
+      # this file: anyone who can read the repo can read this file.
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      # Runs never overlap (see "concurrency" above), so one name will do.
+      TEST_BRANCH: ci/tests
       NEXT_TELEMETRY_DISABLED: 1
 
     steps:
@@ -63,14 +70,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Without the test database, the database tests would be quietly skipped
+      # Without a test database, the database tests would be quietly skipped
       # and CI would look green while testing less. Fail loudly instead.
-      - name: Check the test database secret is set
+      - name: Check the Neon settings are set
         run: |
-          if [ -z "$TEST_DATABASE_URL" ]; then
-            echo "::error::TEST_DATABASE_URL secret is missing. Add it in the repo's Actions secrets."
-            exit 1
+          missing=0
+          for name in NEON_API_KEY NEON_PROJECT_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is missing. Add it to the 'preview' environment in GitHub."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      # A Neon branch is an instant copy of a database. This one copies the
+      # default branch (dev) and only lives for this run; the tests wipe its
+      # data and apply migrations themselves. Any copy a crashed run left
+      # behind is deleted first.
+      - name: Create a throwaway test database
+        run: |
+          npm install --global neonctl@8.8.0
+          if neonctl branches get "$TEST_BRANCH" --project-id "$NEON_PROJECT_ID" > /dev/null 2>&1; then
+            neonctl branches delete "$TEST_BRANCH" --project-id "$NEON_PROJECT_ID" > /dev/null
           fi
+          # Output goes to /dev/null: it includes the password.
+          neonctl branches create --project-id "$NEON_PROJECT_ID" --name "$TEST_BRANCH" > /dev/null
+          url=$(neonctl connection-string "$TEST_BRANCH" --project-id "$NEON_PROJECT_ID" --pooled)
+          echo "::add-mask::$url"
+          echo "TEST_DATABASE_URL=$url" >> "$GITHUB_ENV"
 
       # Fastest checks first, so obvious mistakes fail within seconds.
       - name: Lint
@@ -100,6 +127,16 @@ jobs:
           name: playwright-traces
           path: test-results/
           retention-days: 7
+
+      # Pass or fail, the throwaway database goes (Neon's free plan only
+      # allows a few branches).
+      - name: Delete the throwaway test database
+        if: always()
+        run: |
+          if neonctl branches get "$TEST_BRANCH" --project-id "$NEON_PROJECT_ID" > /dev/null 2>&1; then
+            neonctl branches delete "$TEST_BRANCH" --project-id "$NEON_PROJECT_ID" > /dev/null
+            echo "Deleted $TEST_BRANCH."
+          fi
 
   # ---------------------------------------------------------------------------
   # CD ("continuous deployment"): ship to production, but only if every check
