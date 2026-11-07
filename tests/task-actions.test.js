@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // revalidatePath only works inside a running Next.js server, so replace it with
 // a fake ("mock") that just records how it was called.
@@ -22,6 +22,12 @@ vi.mock("@/lib/subtasks", () => ({
   addSubtask: vi.fn(),
   deleteSubtask: vi.fn(),
   toggleSubtask: vi.fn(),
+}));
+
+// cookies() only works inside a request. The actions read the time zone
+// cookie from it; here it's India, so "today" is easy to predict.
+vi.mock("next/headers", () => ({
+  cookies: vi.fn(async () => ({ get: (name) => (name === "tz" ? { value: "Asia/Kolkata" } : undefined) })),
 }));
 
 // Fake "who is signed in". Each test decides by setting what it returns.
@@ -49,6 +55,7 @@ import {
   createTaskAction,
   deleteTaskAction,
   duplicateTaskAction,
+  moveToTomorrowAction,
   restoreTaskAction,
   toggleTaskAction,
   updateTaskAction,
@@ -624,5 +631,50 @@ describe("clearCompletedAction", () => {
 
     expect(deleteCompletedTasks).toHaveBeenCalledWith("user-1");
     expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+});
+
+describe("smart quick add and Move to tomorrow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getCurrentUser.mockResolvedValue(signedInUser);
+    // 23:00 UTC on 6 Nov is already 7 Nov in India (a Saturday).
+    vi.useFakeTimers({ now: new Date("2026-11-06T23:00:00Z"), toFake: ["Date"] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("reads the date and priority typed at the end of the title", async () => {
+    await createTaskAction(initialState, form("Call mum tomorrow #family !high"));
+
+    expect(addTask).toHaveBeenCalledWith("user-1", "Call mum #family", "2026-11-08", "high", null);
+  });
+
+  it("lets a date picked in the form win over a typed one", async () => {
+    await createTaskAction(initialState, form("Call mum tomorrow", "2026-12-25"));
+
+    expect(addTask).toHaveBeenCalledWith("user-1", "Call mum", "2026-12-25", "medium", null);
+  });
+
+  it("moves a task to tomorrow in the user's time zone", async () => {
+    const data = new FormData();
+    data.set("id", "task-1");
+
+    await moveToTomorrowAction(data);
+
+    expect(updateTask).toHaveBeenCalledWith("user-1", "task-1", { dueDate: "2026-11-08" });
+    expect(revalidatePath).toHaveBeenCalledWith("/tasks");
+  });
+
+  it("does nothing for someone signed out", async () => {
+    getCurrentUser.mockResolvedValue(null);
+    const data = new FormData();
+    data.set("id", "task-1");
+
+    await moveToTomorrowAction(data);
+
+    expect(updateTask).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,11 @@
+import { pushPublicKey } from "@/lib/push";
+import { formatHour } from "@/lib/reminder-validation";
 import { getReminderSettings } from "@/lib/reminders";
 import { requireUser } from "@/lib/session";
 import ChangePasswordForm from "./ChangePasswordForm";
 import DeleteAccountForm from "./DeleteAccountForm";
 import NameForm from "./NameForm";
+import PushToggle from "./PushToggle";
 import ReminderForm from "./ReminderForm";
 
 export const metadata = {
@@ -30,9 +33,18 @@ export default async function AccountPage() {
 
       <section aria-labelledby="reminders-heading" className="space-y-3">
         <h2 id="reminders-heading" className="text-xl font-semibold">
-          Email reminders
+          Daily reminders
         </h2>
         <ReminderForm email={user.email} enabled={reminders.enabled} hour={reminders.hour} />
+
+        <section aria-labelledby="push-heading" className="space-y-2 pt-2">
+          <h3 id="push-heading" className="font-medium">
+            Notifications on this device
+          </h3>
+          {/* Only the public key goes to the browser; the private one stays
+              on the server. */}
+          <PushToggle publicKey={pushPublicKey()} hourText={formatHour(reminders.hour)} />
+        </section>
       </section>
 
       <section aria-labelledby="password-heading" className="space-y-3">

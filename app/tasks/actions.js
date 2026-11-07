@@ -8,6 +8,10 @@
 // Browser checks like `required` and `maxLength` are only for convenience.
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { addDays } from "@/lib/dashboard";
+import { parseQuickAdd } from "@/lib/quick-add";
+import { TIME_ZONE_COOKIE, parseTimeZone, todayIn } from "@/lib/time-zone";
 import { getCurrentUser } from "@/lib/session";
 import { addSubtask, deleteSubtask, toggleSubtask } from "@/lib/subtasks";
 import {
@@ -62,17 +66,24 @@ export async function createTaskAction(prevState, formData) {
     return { error: SIGNED_OUT_ERROR, field: "", ...typed };
   }
 
-  const title = validateTaskTitle(rawTitle);
+  // Smart quick add: "Call mum tomorrow !high" sets the date and priority
+  // from the end of the title (see lib/quick-add.js). A date picked in the
+  // form wins over a typed one; a typed priority wins over the drop-down,
+  // which always has a value.
+  const timeZone = parseTimeZone((await cookies()).get(TIME_ZONE_COOKIE)?.value);
+  const quick = parseQuickAdd(typed.title, todayIn(timeZone));
+
+  const title = validateTaskTitle(typeof rawTitle === "string" ? quick.title : rawTitle);
   if (!title.ok) {
     return { error: title.error, field: "title", ...typed };
   }
 
-  const dueDate = validateDueDate(rawDueDate);
+  const dueDate = validateDueDate(typed.dueDate === "" && quick.dueDate ? quick.dueDate : rawDueDate);
   if (!dueDate.ok) {
     return { error: dueDate.error, field: "dueDate", ...typed };
   }
 
-  const priority = validatePriority(rawPriority);
+  const priority = validatePriority(quick.priority ?? rawPriority);
   if (!priority.ok) {
     return { error: priority.error, field: "priority", ...typed };
   }
@@ -107,6 +118,25 @@ export async function toggleTaskAction(formData) {
   // someone else's task changes nothing.
   await toggleTask(user.id, id);
   revalidatePath("/tasks");
+}
+
+// "Move to tomorrow" on an overdue task: due tomorrow in the user's own time
+// zone. The date is worked out here on the server, never taken from the
+// form, so it's always tomorrow and always a valid date.
+export async function moveToTomorrowAction(formData) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return;
+  }
+
+  const timeZone = parseTimeZone((await cookies()).get(TIME_ZONE_COOKIE)?.value);
+  const tomorrow = addDays(todayIn(timeZone), 1);
+
+  // Only dueDate is given, so nothing else about the task changes.
+  await updateTask(user.id, String(formData.get("id") ?? ""), { dueDate: tomorrow });
+  revalidatePath("/tasks");
+  revalidatePath("/");
+  revalidatePath("/calendar");
 }
 
 // Saves an edited task. Used with useActionState, like createTaskAction, and

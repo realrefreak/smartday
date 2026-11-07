@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { splitTags } from "@/lib/tags";
 import { tasksHref } from "@/lib/task-filter";
-import { deleteTaskAction, duplicateTaskAction, toggleTaskAction } from "./actions";
+import { deleteTaskAction, duplicateTaskAction, moveToTomorrowAction, toggleTaskAction } from "./actions";
 import Checklist from "./Checklist";
 import DueDate from "./DueDate";
 import EditTaskForm from "./EditTaskForm";
@@ -22,7 +22,8 @@ const priorityBadges = {
   low: { text: "Low priority", className: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300" },
 };
 
-export default function TaskItem({ id, title, dueDate, priority, notes, repeat, completed, subtasks }) {
+// overdue: worked out by the page on the server, in the user's time zone.
+export default function TaskItem({ id, title, dueDate, priority, notes, repeat, completed, subtasks, overdue = false }) {
   const [editing, setEditing] = useState(false);
   const offerUndo = useUndoDelete();
   const badge = priorityBadges[priority];
@@ -94,6 +95,16 @@ export default function TaskItem({ id, title, dueDate, priority, notes, repeat, 
             {completed ? "Undo" : "Mark done"}
           </button>
         </form>
+
+        {/* One click instead of editing the date by hand. */}
+        {overdue && (
+          <form action={moveToTomorrowAction}>
+            <input type="hidden" name="id" value={id} />
+            <button type="submit" className="hover:underline">
+              Move to tomorrow
+            </button>
+          </form>
+        )}
 
         <button type="button" onClick={() => setEditing(true)} className="hover:underline">
           Edit
