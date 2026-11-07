@@ -15,6 +15,13 @@ Work from the repository root with the Bash tool (Git Bash on Windows, POSIX syn
 
 On Windows, the GitHub CLI is often missing from Git Bash's PATH. Start every Bash call that uses `gh` with `export PATH="$PATH:/c/Program Files/GitHub CLI" && ...`.
 
+**Never get stuck waiting.** Nobody is watching this terminal, so a command that waits for input (a password, a login code, a "continue? y/n", an editor) hangs until the session dies. To stop that:
+- Start every Bash call with `export GIT_TERMINAL_PROMPT=0 GH_PROMPT_DISABLED=1 GIT_EDITOR=true CI=1 &&`. With these, git and gh fail with an error instead of asking, and that error is something you can report.
+- Give every Bash call a `timeout` (120000 ms is plenty; 300000 for the Vitest run). If a command times out, don't retry it in a loop: report which step hung.
+- Never start a login or any command that opens a browser (`gh auth login`, `vercel login`, `vercel link`, `npx vercel ...`). If something needs signing in, stop and tell the user.
+- Use `npx --no-install` so npx never asks to download a package.
+- Never run a long-lived process (dev server, `--watch` mode, `gh run watch`).
+
 ## 1. Look before doing anything
 
 - `gh auth status` must succeed. If `/c/Program Files/GitHub CLI/gh.exe` doesn't exist or it isn't logged in, stop and tell the user to run `winget install --id GitHub.cli` and then `gh auth login`.
@@ -36,7 +43,7 @@ Auto-merge means nobody looks at a migration before it runs on production, so th
 These take about a minute and catch most mistakes before using CI time. Stop at the first failure.
 
 1. `npm run lint`
-2. `npx vitest run`
+2. `npx --no-install vitest run`
 
 Skip local Playwright: CI runs the full E2E suite twice (on a local build and on the live preview).
 
