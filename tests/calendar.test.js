@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMonth, monthGrid, parseMonth, shiftMonth } from "@/lib/calendar";
+import { formatMonth, monthGrid, parseDay, parseMonth, shiftMonth } from "@/lib/calendar";
 
 describe("parseMonth", () => {
   const today = "2026-11-06";
@@ -48,5 +48,23 @@ describe("monthGrid", () => {
     expect(weeks).toHaveLength(4);
     expect(from).toBe("2027-02-01");
     expect(to).toBe("2027-02-28");
+  });
+});
+
+describe("parseDay", () => {
+  // November 2026's grid runs from Monday 26 October to Sunday 6 December.
+  const from = "2026-10-26";
+  const to = "2026-12-06";
+
+  it("accepts a real day shown in the grid, including the edge weeks", () => {
+    expect(parseDay("2026-11-12", from, to)).toBe("2026-11-12");
+    expect(parseDay("2026-10-26", from, to)).toBe("2026-10-26");
+    expect(parseDay("2026-12-06", from, to)).toBe("2026-12-06");
+  });
+
+  it("ignores days outside the grid, impossible dates and junk", () => {
+    for (const value of ["2026-12-07", "2026-10-25", "2026-11-31", "2026-02-30", "2026-11-1", "banana", "", undefined, ["2026-11-12"]]) {
+      expect(parseDay(value, from, to)).toBeNull();
+    }
   });
 });

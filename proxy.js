@@ -19,5 +19,5 @@ export function proxy(request) {
 
 export const config = {
   // Pages that require login. ":path*" also covers anything under them.
-  matcher: ["/tasks/:path*", "/calendar/:path*", "/account/:path*"],
+  matcher: ["/tasks/:path*", "/calendar/:path*", "/review/:path*", "/account/:path*"],
 };

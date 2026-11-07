@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { formatMonth, monthGrid, parseMonth, shiftMonth } from "@/lib/calendar";
+import { formatMonth, monthGrid, parseDay, parseMonth, shiftMonth } from "@/lib/calendar";
+import { formatLongDate } from "@/lib/dashboard";
 import { formatDueDate } from "@/lib/due-date";
 import { requireUser } from "@/lib/session";
 import { listTasksDueBetween } from "@/lib/tasks";
 import { TIME_ZONE_COOKIE, parseTimeZone, todayIn } from "@/lib/time-zone";
+import AddTaskForm from "../tasks/AddTaskForm";
 import TimeZoneCookie from "../tasks/TimeZoneCookie";
 
 export const metadata = {
@@ -26,9 +28,10 @@ function taskClass(task, today) {
   return priorityClasses[task.priority] ?? priorityClasses.medium;
 }
 
-function DayCell({ day, tasks, today }) {
+function DayCell({ day, tasks, today, month, picked }) {
   const dayNumber = Number(day.date.slice(8));
   const isToday = day.date === today;
+  const isPicked = day.date === picked;
   const shown = tasks.slice(0, MAX_PER_DAY);
   const more = tasks.length - shown.length;
 
@@ -38,15 +41,25 @@ function DayCell({ day, tasks, today }) {
         day.inMonth ? "" : "bg-black/[0.03] text-zinc-400 dark:bg-white/[0.03] dark:text-zinc-500"
       }`}
     >
-      <time
-        dateTime={day.date}
-        aria-current={isToday ? "date" : undefined}
-        className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-          isToday ? "bg-foreground font-semibold text-background" : ""
+      {/* The day number opens that day's panel, to see all its tasks or add
+          one. aria-label says the full date, since "12" alone means little. */}
+      <Link
+        href={`/calendar?month=${month}&day=${day.date}`}
+        aria-label={`${formatLongDate(day.date)}${tasks.length ? `, ${tasks.length} ${tasks.length === 1 ? "task" : "tasks"}` : ""}`}
+        className={`inline-flex rounded-full hover:ring-2 hover:ring-black/20 dark:hover:ring-white/30 ${
+          isPicked ? "ring-2 ring-foreground" : ""
         }`}
       >
-        {dayNumber}
-      </time>
+        <time
+          dateTime={day.date}
+          aria-current={isToday ? "date" : undefined}
+          className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs ${
+            isToday ? "bg-foreground font-semibold text-background" : ""
+          }`}
+        >
+          {dayNumber}
+        </time>
+      </Link>
 
       {tasks.length > 0 && (
         <>
@@ -72,7 +85,43 @@ function DayCell({ day, tasks, today }) {
   );
 }
 
+// Everything due on the picked day, plus a form that adds a task due then.
+function DayPanel({ day, tasks, month, today }) {
+  return (
+    <section
+      aria-labelledby="day-panel-heading"
+      className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/15"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h2 id="day-panel-heading" className="text-lg font-semibold">
+          {formatLongDate(day)}
+          {day === today && <span className="ml-2 text-sm font-normal text-zinc-600 dark:text-zinc-400">Today</span>}
+        </h2>
+        <Link href={`/calendar?month=${month}`} className="rounded px-2 py-1 text-sm hover:bg-black/5 dark:hover:bg-white/10">
+          Close
+        </Link>
+      </div>
+
+      {tasks.length === 0 ? (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Nothing due this day yet.</p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {tasks.map((task) => (
+            <li key={task.id} className={`rounded px-2 py-1 ${taskClass(task, today)}`}>
+              {task.title}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* key: a fresh form for each day, so its date input shows the new day. */}
+      <AddTaskForm key={day} defaultDueDate={day} />
+    </section>
+  );
+}
+
 // ?month=2026-11 picks the month; anything else shows this month.
+// ?day=2026-11-12 (a day in the grid) opens that day's panel.
 export default async function CalendarPage({ searchParams }) {
   const user = await requireUser();
   const params = await searchParams;
@@ -84,6 +133,7 @@ export default async function CalendarPage({ searchParams }) {
 
   // Only the tasks due on the days shown, from one query.
   const tasks = await listTasksDueBetween(user.id, from, to);
+  const picked = parseDay(params.day, from, to);
   const tasksByDay = Object.groupBy(tasks, (task) => task.dueDate);
   const monthTasks = tasks.filter((task) => task.dueDate.startsWith(month));
 
@@ -111,6 +161,12 @@ export default async function CalendarPage({ searchParams }) {
         </nav>
       </div>
 
+      {picked ? (
+        <DayPanel day={picked} tasks={tasksByDay[picked] ?? []} month={month} today={today} />
+      ) : (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Pick a day to see everything due then, or to add a task for it.</p>
+      )}
+
       {/* A real <table>: a calendar is a grid of data, and table markup lets
           screen readers announce "Wednesday" with each day. */}
       <table className="w-full table-fixed border-collapse">
@@ -128,7 +184,14 @@ export default async function CalendarPage({ searchParams }) {
           {weeks.map((week) => (
             <tr key={week[0].date}>
               {week.map((day) => (
-                <DayCell key={day.date} day={day} tasks={tasksByDay[day.date] ?? []} today={today} />
+                <DayCell
+                  key={day.date}
+                  day={day}
+                  tasks={tasksByDay[day.date] ?? []}
+                  today={today}
+                  month={month}
+                  picked={picked}
+                />
               ))}
             </tr>
           ))}
