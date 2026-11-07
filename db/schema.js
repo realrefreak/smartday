@@ -150,7 +150,37 @@ export const reminderSettings = pgTable(
     // had nothing to say). Stops the same day being sent twice.
     lastSentOn: date("last_sent_on", { mode: "string" }),
 
+    // The same, for notifications on the user's devices. Kept apart from
+    // email, so an email that fails (and is retried next hour) can't make a
+    // notification go out twice.
+    pushLastSentOn: date("push_last_sent_on", { mode: "string" }),
+
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [check("reminder_settings_hour_check", sql`${table.hour} between 0 and 23`)],
+);
+
+// Devices that agreed to show SmartDay notifications ("web push"). The
+// browser hands us an endpoint (an address at Google, Apple or Mozilla's
+// push service, unique to this browser) and two keys to encrypt messages
+// with, so only that browser can read them. One user can have several
+// devices; signing out doesn't remove them, turning notifications off does.
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+
+    // Unique: one browser is one subscription. If someone else signs in on
+    // the same browser and turns notifications on, the row moves to them.
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("push_subscriptions_user_id_idx").on(table.userId)],
 );

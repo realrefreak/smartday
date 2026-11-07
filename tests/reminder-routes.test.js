@@ -5,8 +5,12 @@ vi.mock("@/lib/reminders", () => ({
   sendDueReminders: vi.fn(async () => ({ checked: 0, sent: 0, nothingDue: 0, failed: 0 })),
   disableReminders: vi.fn(async () => true),
 }));
+vi.mock("@/lib/push", () => ({
+  sendDuePushReminders: vi.fn(async () => ({ checked: 0, sent: 0, nothingDue: 0, failed: 0 })),
+}));
 vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
 
+import { sendDuePushReminders } from "@/lib/push";
 import { disableReminders, sendDueReminders } from "@/lib/reminders";
 import { POST as runReminders } from "@/app/api/cron/reminders/route";
 import { POST as oneClickUnsubscribe } from "@/app/api/reminders/unsubscribe/route";
@@ -35,6 +39,18 @@ describe("POST /api/cron/reminders", () => {
 
     expect(response.status).toBe(200);
     expect(sendDueReminders).toHaveBeenCalledWith({ appUrl: "https://smartday.example" });
+    expect(sendDuePushReminders).toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ sent: 0, push: { sent: 0 } });
+  });
+
+  it("still sends notifications when the email part breaks", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    sendDueReminders.mockRejectedValueOnce(new Error("database down"));
+
+    const response = await runReminders(cronRequest("Bearer a-long-random-cron-secret"));
+
+    expect(response.status).toBe(500);
+    expect(sendDuePushReminders).toHaveBeenCalled();
   });
 
   it("refuses a wrong or missing secret", async () => {
@@ -42,6 +58,7 @@ describe("POST /api/cron/reminders", () => {
       expect((await runReminders(cronRequest(header))).status).toBe(401);
     }
     expect(sendDueReminders).not.toHaveBeenCalled();
+    expect(sendDuePushReminders).not.toHaveBeenCalled();
   });
 
   it("refuses everything when no secret is configured", async () => {

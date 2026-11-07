@@ -59,7 +59,7 @@ export default function ReminderForm({ email, enabled, hour }) {
             </option>
           ))}
         </select>
-        <span className="text-sm text-zinc-600 dark:text-zinc-400">your time</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400">your time (notifications too)</span>
         <button
           type="submit"
           disabled={pending}

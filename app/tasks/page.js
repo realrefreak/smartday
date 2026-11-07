@@ -153,6 +153,7 @@ export default async function TasksPage({ searchParams }) {
                 notes={task.notes}
                 repeat={task.repeat}
                 completed={task.completed}
+                overdue={!task.completed && task.dueDate !== null && task.dueDate < today}
                 subtasks={subtasksByTask[task.id] ?? []}
               />
             ))}

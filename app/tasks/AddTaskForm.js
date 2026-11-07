@@ -80,6 +80,11 @@ export default function AddTaskForm({ defaultDueDate = "" }) {
         </button>
       </div>
 
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        Tip: end with a date and priority, like <q>Call mum tomorrow !high</q>, <q>fri</q>, <q>in 3 days</q> or{" "}
+        <q>12 dec</q>.
+      </p>
+
       {state.error && (
         <p id="form-error" role="alert" className="text-sm text-red-600 dark:text-red-400">
           {state.error}
