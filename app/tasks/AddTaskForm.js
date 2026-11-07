@@ -12,7 +12,8 @@ import { inputClass } from "./styles";
 
 const initialState = { error: "", field: "", title: "", dueDate: "", priority: DEFAULT_PRIORITY, repeat: "" };
 
-export default function AddTaskForm() {
+// defaultDueDate: a date to fill in, e.g. the day picked on the calendar.
+export default function AddTaskForm({ defaultDueDate = "" }) {
   // state   = whatever createTaskAction returned last time
   // action  = pass this to <form action>; React calls createTaskAction for us
   // pending = true while the action is running
@@ -45,7 +46,9 @@ export default function AddTaskForm() {
           id="dueDate"
           name="dueDate"
           type="date"
-          defaultValue={state.dueDate}
+          // After a successful add the action returns dueDate "", and the
+          // calendar's day should stay filled in for the next task.
+          defaultValue={state.dueDate || defaultDueDate}
           {...errorProps("dueDate")}
           className={inputClass}
         />

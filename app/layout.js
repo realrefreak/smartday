@@ -24,6 +24,20 @@ export const metadata = {
     default: "SmartDay",
   },
   description: "Organize your day, one task at a time.",
+  // iPhones read these when SmartDay is added to the home screen.
+  appleWebApp: {
+    title: "SmartDay",
+    statusBarStyle: "default",
+  },
+};
+
+// The colour phones paint the status bar and installed-app title bar with,
+// matching the light or dark system setting.
+export const viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 export default async function RootLayout({ children }) {
@@ -52,6 +66,9 @@ export default async function RootLayout({ children }) {
             </Link>
             <Link href="/calendar" className="hover:underline">
               Calendar
+            </Link>
+            <Link href="/review" className="hover:underline">
+              Review
             </Link>
             <Link href="/about" className="hover:underline">
               About

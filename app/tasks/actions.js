@@ -88,6 +88,7 @@ export async function createTaskAction(prevState, formData) {
   // are out of date, so the response shows the new task.
   revalidatePath("/tasks");
   revalidatePath("/");
+  revalidatePath("/calendar");
 
   // Clear the form for the next task, but keep the priority: people often add
   // several tasks of the same priority in a row.
